@@ -35,6 +35,7 @@ export const SpecimenCatalogView: React.FC<SpecimenCatalogViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
   const [selectedSection, setSelectedSection] = useState<string>('ALL');
+  const [specimenToDelete, setSpecimenToDelete] = useState<SpecimenRecord | null>(null);
 
   // Quick stats calculation for all registered taxonomic groups
   const groupStats = useMemo(() => {
@@ -469,10 +470,25 @@ export const SpecimenCatalogView: React.FC<SpecimenCatalogViewProps> = ({
                     <span className="font-mono text-[#006c49] font-bold">
                       {specimen.georeference.elevationMeters} msnm
                     </span>
-                    <span className="text-[#002217] font-bold group-hover:text-[#006c49] flex items-center gap-0.5">
-                      <span>Ver Ficha</span>
-                      <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {onDeleteSpecimen && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSpecimenToDelete(specimen);
+                          }}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-[#ba1a1a] hover:bg-red-50 hover:text-red-700 transition-colors cursor-pointer"
+                          title="Eliminar este registro científico de todos los dispositivos"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      )}
+                      <span className="text-[#002217] font-bold group-hover:text-[#006c49] flex items-center gap-0.5">
+                        <span>Ver Ficha</span>
+                        <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -490,6 +506,43 @@ export const SpecimenCatalogView: React.FC<SpecimenCatalogViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Modal de confirmación para eliminar espécimen */}
+      {specimenToDelete && onDeleteSpecimen && (
+        <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-5 max-w-sm w-full shadow-2xl flex flex-col gap-3">
+            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <span className="material-symbols-outlined text-2xl">delete_forever</span>
+            </div>
+            <h4 className="font-bold text-center text-[#002217] text-base">
+              ¿Eliminar registro científico?
+            </h4>
+            <p className="text-xs text-center text-[#414844]">
+              Se eliminará definitivamente la ficha de <strong className="italic">{specimenToDelete.scientificName}</strong> ({specimenToDelete.catalogNumber}) y dejará de aparecer en todos los dispositivos vinculados.
+            </p>
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSpecimenToDelete(null)}
+                className="py-2.5 px-3 rounded-xl border border-[#c1c8c3] text-xs font-bold text-[#414844] hover:bg-[#f2f4ee] cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const id = specimenToDelete.id;
+                  setSpecimenToDelete(null);
+                  onDeleteSpecimen(id);
+                }}
+                className="py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold cursor-pointer"
+              >
+                Sí, Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

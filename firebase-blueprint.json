@@ -22,12 +22,26 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "scientificName"]
+    },
+    "DeletedSpecimen": {
+      "title": "DeletedSpecimen",
+      "description": "Tombstone record of a deleted specimen to propagate instant deletions across all connected devices and prevent resurrection.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "deletedAt": { "type": "string" }
+      },
+      "required": ["id", "deletedAt"]
     }
   },
   "firestore": {
     "/specimens/{specimenId}": {
       "schema": "Specimen",
       "description": "Collection of biological specimens recorded in BioBitácora CR for cross-device real-time synchronization."
+    },
+    "/deleted_specimens/{deletedId}": {
+      "schema": "DeletedSpecimen",
+      "description": "Collection of deleted specimen IDs to propagate instant deletions across all connected devices and prevent resurrection."
     }
   }
 }

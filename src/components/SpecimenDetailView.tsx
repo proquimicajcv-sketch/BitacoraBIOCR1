@@ -1823,7 +1823,7 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
               ¿Eliminar este registro científico?
             </h4>
             <p className="text-xs text-center text-[#414844]">
-              Se eliminará definitivamente la ficha de <strong className="italic">{specimen.scientificName}</strong> ({specimen.catalogNumber}). Esta acción no se puede deshacer.
+              Se eliminará definitivamente la ficha de <strong className="italic">{specimen.scientificName}</strong> ({specimen.catalogNumber}) y dejará de aparecer en todos los dispositivos vinculados.
             </p>
             <div className="grid grid-cols-2 gap-2 pt-2">
               <button

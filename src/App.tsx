@@ -23,6 +23,8 @@ import {
   batchSyncSpecimensToCloud,
   testFirestoreConnection,
   fetchAllSpecimensFromCloud,
+  subscribeToDeletedSpecimens,
+  fetchDeletedSpecimensFromCloud,
 } from './services/firestoreSync';
 
 type ActiveView = 'COVER' | 'DETAIL' | 'MAP' | 'CATALOG' | 'STATISTICS';
@@ -33,6 +35,7 @@ const TIMESTAMP_KEY = 'biobitacora_cr_last_modified';
 const DEVICE_ID_KEY = 'biobitacora_cr_device_id';
 const OBSERVER_NAME_KEY = 'biobitacora_cr_observer_name';
 const DEVICE_NAME_KEY = 'biobitacora_cr_device_name';
+const DELETED_KEY = 'biobitacora_cr_deleted_ids';
 
 function getOrCreateDeviceId(): string {
   try {
@@ -48,13 +51,42 @@ function getOrCreateDeviceId(): string {
   }
 }
 
-function mergeSpecimenLists(existingList: SpecimenRecord[], incomingList: SpecimenRecord[]): SpecimenRecord[] {
-  if (!Array.isArray(existingList) || existingList.length === 0) return incomingList;
-  if (!Array.isArray(incomingList) || incomingList.length === 0) return existingList;
+function getLocalDeletedIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed);
+    }
+  } catch {}
+  return new Set();
+}
 
-  const result: SpecimenRecord[] = [...existingList];
+function saveLocalDeletedIds(ids: Set<string>): void {
+  try {
+    localStorage.setItem(DELETED_KEY, JSON.stringify(Array.from(ids)));
+  } catch {}
+}
 
-  for (const incoming of incomingList) {
+function mergeSpecimenLists(
+  existingList: SpecimenRecord[],
+  incomingList: SpecimenRecord[],
+  deletedIdsSet?: Set<string>
+): SpecimenRecord[] {
+  const deleted = deletedIdsSet || getLocalDeletedIds();
+  const cleanExisting = (Array.isArray(existingList) ? existingList : []).filter(
+    (e) => e && e.id && !deleted.has(e.id)
+  );
+  const cleanIncoming = (Array.isArray(incomingList) ? incomingList : []).filter(
+    (i) => i && i.id && !deleted.has(i.id)
+  );
+
+  if (cleanExisting.length === 0) return cleanIncoming;
+  if (cleanIncoming.length === 0) return cleanExisting;
+
+  const result: SpecimenRecord[] = [...cleanExisting];
+
+  for (const incoming of cleanIncoming) {
     const idx = result.findIndex(
       (e) => (incoming.id && e.id === incoming.id) ||
              (incoming.scientificName && e.scientificName === incoming.scientificName)
@@ -165,7 +197,8 @@ function mergeSpecimenLists(existingList: SpecimenRecord[], incomingList: Specim
   return result;
 }
 
-function sanitizeSpecimens(list: SpecimenRecord[]): SpecimenRecord[] {
+function sanitizeSpecimens(list: SpecimenRecord[], deletedIdsSet?: Set<string>): SpecimenRecord[] {
+  const deleted = deletedIdsSet || getLocalDeletedIds();
   const demoIdsToPurge = new Set([
     'cr-bio-2024-9104', // Oophaga pumilio
     'cr-bio-2024-7731', // Pharomachrus mocinno
@@ -177,7 +210,7 @@ function sanitizeSpecimens(list: SpecimenRecord[]): SpecimenRecord[] {
   ]);
 
   let filtered = (list || [])
-    .filter((item) => !demoIdsToPurge.has(item.id))
+    .filter((item) => item && item.id && !demoIdsToPurge.has(item.id) && !deleted.has(item.id))
     .map((item) => {
       if (
         item.scientificName === 'Isthmohyla nacientes' ||
@@ -288,11 +321,9 @@ function sanitizeSpecimens(list: SpecimenRecord[]): SpecimenRecord[] {
       return item;
     });
 
-  const hasNacientes = filtered.some(
-    (s) => s.scientificName === 'Isthmohyla nacientes' || s.id === INITIAL_SPECIMENS[0].id
-  );
-  if (!hasNacientes) {
-    filtered = [INITIAL_SPECIMENS[0], ...filtered];
+  const isNacientesDeleted = deleted.has(INITIAL_SPECIMENS[0].id) || deleted.has('cr-bio-2026-0042');
+  if (!isNacientesDeleted && deleted.size === 0 && filtered.length === 0) {
+    filtered = [INITIAL_SPECIMENS[0]];
   }
 
   return filtered;
@@ -322,17 +353,23 @@ export default function App() {
   const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
   const [syncStatusToast, setSyncStatusToast] = useState<string | null>(null);
 
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(() => getLocalDeletedIds());
+
   const [specimens, setSpecimens] = useState<SpecimenRecord[]>(() => {
     try {
+      const curDeleted = getLocalDeletedIds();
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         let parsed: SpecimenRecord[] = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const merged = mergeSpecimenLists(parsed, INITIAL_SPECIMENS);
-          const sanitized = sanitizeSpecimens(merged);
+          const merged = mergeSpecimenLists(parsed, [], curDeleted);
+          const sanitized = sanitizeSpecimens(merged, curDeleted);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
           return sanitized;
         }
+      }
+      if (curDeleted.size > 0) {
+        return [];
       }
     } catch {
       // Ignore
@@ -340,7 +377,7 @@ export default function App() {
     return INITIAL_SPECIMENS;
   });
 
-  const [currentSpecimen, setCurrentSpecimen] = useState<SpecimenRecord>(specimens[0]);
+  const [currentSpecimen, setCurrentSpecimen] = useState<SpecimenRecord>(specimens[0] || INITIAL_SPECIMENS[0]);
   const [activeView, setActiveView] = useState<ActiveView>('COVER');
 
   // Modals
@@ -359,8 +396,9 @@ export default function App() {
   } | undefined>(undefined);
 
   // Centralized robust persistence helper (immediate local + Google Cloud Firestore + server sync)
-  const persistSpecimens = async (updated: SpecimenRecord[]) => {
-    const sanitized = sanitizeSpecimens(updated);
+  const persistSpecimens = async (updated: SpecimenRecord[], customDeleted?: Set<string>) => {
+    const activeDeleted = customDeleted || deletedIds;
+    const sanitized = sanitizeSpecimens(updated, activeDeleted);
     setSpecimens(sanitized);
     const now = Date.now();
     try {
@@ -390,7 +428,12 @@ export default function App() {
       fetch('/api/database/specimens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ specimens: sanitized, lastModified: now, deviceId }),
+        body: JSON.stringify({
+          specimens: sanitized,
+          deletedIds: Array.from(activeDeleted),
+          lastModified: now,
+          deviceId,
+        }),
       }).catch(() => {});
     } catch {}
 
@@ -399,8 +442,8 @@ export default function App() {
 
   // Keep currentSpecimen synchronized whenever specimens changes (e.g. after adding a sighting)
   useEffect(() => {
-    if (currentSpecimen && specimens.length > 0) {
-      const fresh = specimens.find((s) => s.id === currentSpecimen.id);
+    if (specimens.length > 0) {
+      const fresh = currentSpecimen ? specimens.find((s) => s.id === currentSpecimen.id) : null;
       if (fresh) {
         if (JSON.stringify(fresh) !== JSON.stringify(currentSpecimen)) {
           setCurrentSpecimen(fresh);
@@ -416,13 +459,58 @@ export default function App() {
   useEffect(() => {
     testFirestoreConnection();
 
-    // Immediately fetch all cloud specimens to guarantee species added on other devices are pulled
+    // 1. Fetch deleted specimen tombstones on boot to immediately clean any local cache
+    fetchDeletedSpecimensFromCloud()
+      .then((cloudDeleted) => {
+        if (Array.isArray(cloudDeleted) && cloudDeleted.length > 0) {
+          setDeletedIds((prev) => {
+            const merged = new Set([...prev, ...cloudDeleted]);
+            saveLocalDeletedIds(merged);
+            return merged;
+          });
+          setSpecimens((prevLocal) => {
+            const delSet = new Set(cloudDeleted);
+            const filtered = prevLocal.filter((s) => !delSet.has(s.id));
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+            } catch {}
+            return filtered;
+          });
+        }
+      })
+      .catch((err) => console.warn('Cloud deleted fetch error:', err));
+
+    // 2. Real-time subscription to deleted_specimens tombstones
+    const unsubscribeDeleted = subscribeToDeletedSpecimens((cloudDeleted) => {
+      if (Array.isArray(cloudDeleted) && cloudDeleted.length > 0) {
+        setDeletedIds((prev) => {
+          const merged = new Set([...prev, ...cloudDeleted]);
+          saveLocalDeletedIds(merged);
+          return merged;
+        });
+        setSpecimens((prevLocal) => {
+          const delSet = new Set(cloudDeleted);
+          const hasAny = prevLocal.some((s) => delSet.has(s.id));
+          if (!hasAny) return prevLocal;
+          const filtered = prevLocal.filter((s) => !delSet.has(s.id));
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+          } catch {}
+          return filtered;
+        });
+      }
+    });
+
+    // 3. Immediately fetch all cloud specimens to guarantee species added on other devices are pulled
     fetchAllSpecimensFromCloud()
       .then((cloudList) => {
         if (Array.isArray(cloudList) && cloudList.length > 0) {
+          const curDeleted = getLocalDeletedIds();
+          const cleanCloud = cloudList.filter((s) => !curDeleted.has(s.id));
           setSpecimens((prevLocal) => {
-            const merged = mergeSpecimenLists(prevLocal, cloudList);
-            const sanitized = sanitizeSpecimens(merged);
+            const cleanLocal = prevLocal.filter((s) => !curDeleted.has(s.id));
+            const merged = mergeSpecimenLists(cleanLocal, cleanCloud, curDeleted);
+            const sanitized = sanitizeSpecimens(merged, curDeleted);
             try {
               localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
               localStorage.setItem(TIMESTAMP_KEY, String(Date.now()));
@@ -438,12 +526,15 @@ export default function App() {
         console.warn('Initial cloud fetch error:', err);
       });
 
-    const unsubscribe = subscribeToSpecimens(
+    // 4. Real-time specimens listener
+    const unsubscribeSpecimens = subscribeToSpecimens(
       (cloudSpecimens) => {
         setLastCloudSyncTime(new Date().toLocaleTimeString('es-CR'));
+        const curDeleted = getLocalDeletedIds();
+        const cleanCloud = (cloudSpecimens || []).filter((s) => !curDeleted.has(s.id));
 
-        if (cloudSpecimens.length === 0) {
-          // If cloud database is newly initialized, seed it with current local/initial specimens
+        if (cleanCloud.length === 0 && curDeleted.size === 0) {
+          // If cloud database is newly initialized and no user deletions have been made, seed it
           setSpecimens((current) => {
             const listToUpload = current && current.length > 0 ? current : INITIAL_SPECIMENS;
             batchSyncSpecimensToCloud(listToUpload).catch((err) => console.warn('Cloud seed error:', err));
@@ -453,19 +544,21 @@ export default function App() {
         }
 
         setSpecimens((prevLocal) => {
-          // Merge incoming cloud specimens with local specimens
-          const merged = mergeSpecimenLists(prevLocal, cloudSpecimens);
-          const sanitized = sanitizeSpecimens(merged);
+          // Merge incoming cloud specimens with local specimens, strictly respecting deleted IDs
+          const cleanLocal = prevLocal.filter((s) => !curDeleted.has(s.id));
+          const merged = mergeSpecimenLists(cleanLocal, cleanCloud, curDeleted);
+          const sanitized = sanitizeSpecimens(merged, curDeleted);
 
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
             localStorage.setItem(TIMESTAMP_KEY, String(Date.now()));
           } catch {}
 
-          // If local had unsynced sightings or species not yet in cloud, push merged back to cloud!
-          const localSightingsCount = prevLocal.reduce((acc, s) => acc + (s.sightings?.length || 0), 0);
-          const cloudSightingsCount = cloudSpecimens.reduce((acc, s) => acc + (s.sightings?.length || 0), 0);
-          if (localSightingsCount > cloudSightingsCount || prevLocal.length > cloudSpecimens.length) {
+          // Only push local specimens to cloud if they are active additions that cloud doesn't have yet
+          const localActiveOnly = cleanLocal.filter(
+            (l) => !cleanCloud.some((c) => c.id === l.id) && !curDeleted.has(l.id)
+          );
+          if (localActiveOnly.length > 0) {
             batchSyncSpecimensToCloud(sanitized).catch(() => {});
           }
 
@@ -479,7 +572,8 @@ export default function App() {
     );
 
     return () => {
-      unsubscribe();
+      unsubscribeDeleted();
+      unsubscribeSpecimens();
     };
   }, []);
 
@@ -488,25 +582,37 @@ export default function App() {
     try {
       const res = await fetch('/api/database/specimens');
       const data = await res.json();
-      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-        setSpecimens((prevLocal) => {
-          const merged = mergeSpecimenLists(prevLocal, data.data);
-          const sanitized = sanitizeSpecimens(merged);
+      if (data.success) {
+        let activeDeleted = getLocalDeletedIds();
+        if (Array.isArray(data.deletedIds) && data.deletedIds.length > 0) {
+          const mergedDeleted = new Set([...activeDeleted, ...data.deletedIds]);
+          activeDeleted = mergedDeleted;
+          setDeletedIds(mergedDeleted);
+          saveLocalDeletedIds(mergedDeleted);
+        }
 
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
-            if (data.lastModified) {
-              localStorage.setItem(TIMESTAMP_KEY, String(data.lastModified));
-            }
-          } catch {}
+        if (Array.isArray(data.data)) {
+          const cleanServer = data.data.filter((s: SpecimenRecord) => s && s.id && !activeDeleted.has(s.id));
+          setSpecimens((prevLocal) => {
+            const cleanLocal = prevLocal.filter((s) => s && s.id && !activeDeleted.has(s.id));
+            const merged = mergeSpecimenLists(cleanLocal, cleanServer, activeDeleted);
+            const sanitized = sanitizeSpecimens(merged, activeDeleted);
 
-          cacheAllSpecimensMedia(sanitized).catch(() => {});
-          return sanitized;
-        });
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+              if (data.lastModified) {
+                localStorage.setItem(TIMESTAMP_KEY, String(data.lastModified));
+              }
+            } catch {}
 
-        if (!silent) {
-          setSyncStatusToast(`¡Sincronizado! Se cargaron y unificaron todos los avistamientos de la bitácora.`);
-          setTimeout(() => setSyncStatusToast(null), 3500);
+            cacheAllSpecimensMedia(sanitized).catch(() => {});
+            return sanitized;
+          });
+
+          if (!silent) {
+            setSyncStatusToast(`¡Sincronizado! Se cargaron y unificaron todos los avistamientos de la bitácora.`);
+            setTimeout(() => setSyncStatusToast(null), 3500);
+          }
         }
       }
     } catch {
@@ -536,6 +642,14 @@ export default function App() {
 
   // Handle saving new or edited specimen
   const handleSaveSpecimen = (savedSpecimen: SpecimenRecord) => {
+    // If this ID was previously marked deleted, un-delete it because user is explicitly saving it
+    if (deletedIds.has(savedSpecimen.id)) {
+      const nextDeleted = new Set(deletedIds);
+      nextDeleted.delete(savedSpecimen.id);
+      setDeletedIds(nextDeleted);
+      saveLocalDeletedIds(nextDeleted);
+    }
+
     const existsIndex = specimens.findIndex((s) => s.id === savedSpecimen.id);
     let updated: SpecimenRecord[];
     if (existsIndex >= 0) {
@@ -550,20 +664,53 @@ export default function App() {
     setEditingSpecimen(null);
   };
 
-  // Handle deleting specimen
-  const handleDeleteSpecimen = (specimenId: string) => {
+  // Handle deleting specimen permanently across all linked devices
+  const handleDeleteSpecimen = async (specimenId: string) => {
+    // 1. Instantly register in deletedIds set and localStorage
+    const nextDeleted = new Set(deletedIds);
+    nextDeleted.add(specimenId);
+    setDeletedIds(nextDeleted);
+    saveLocalDeletedIds(nextDeleted);
+
+    // 2. Filter local specimen list immediately
     const filtered = specimens.filter((s) => s.id !== specimenId);
-    if (currentSpecimen.id === specimenId) {
+    setSpecimens(filtered);
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+      localStorage.setItem(TIMESTAMP_KEY, String(Date.now()));
+    } catch {}
+
+    // 3. Switch current specimen if the active one was deleted
+    if (currentSpecimen && currentSpecimen.id === specimenId) {
       if (filtered.length > 0) {
         setCurrentSpecimen(filtered[0]);
       } else {
-        setCurrentSpecimen(INITIAL_SPECIMENS[0]);
+        setCurrentSpecimen(null as any);
       }
       setActiveView('CATALOG');
     }
 
-    deleteSpecimenFromCloud(specimenId).catch((err) => console.warn('Cloud delete error:', err));
-    persistSpecimens(filtered);
+    // 4. Delete from Google Cloud Firestore (removes document AND registers tombstone in deleted_specimens)
+    deleteSpecimenFromCloud(specimenId).catch((err) =>
+      console.warn('Cloud delete error:', err)
+    );
+
+    // 5. Delete from server JSON storage and backup files
+    try {
+      await fetch(`/api/database/specimens/${encodeURIComponent(specimenId)}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      console.warn('Server delete error:', err);
+    }
+
+    // 6. Push remaining specimens to cloud and server with deletedIds
+    persistSpecimens(filtered, nextDeleted);
+
+    // 7. Show toast feedback
+    setSyncStatusToast(`Registro eliminado definitivamente y sincronizado en todos los dispositivos.`);
+    setTimeout(() => setSyncStatusToast(null), 4000);
   };
 
   // Handle updating bioacoustics directly
@@ -625,18 +772,26 @@ export default function App() {
 
       // 2. Also fetch from backend server endpoint if available
       let serverList: SpecimenRecord[] = [];
+      let activeDeleted = getLocalDeletedIds();
       try {
         const sRes = await fetch('/api/database/specimens');
         const sData = await sRes.json();
-        if (sData.success && Array.isArray(sData.data)) {
-          serverList = sData.data;
+        if (sData.success) {
+          if (Array.isArray(sData.deletedIds) && sData.deletedIds.length > 0) {
+            activeDeleted = new Set([...activeDeleted, ...sData.deletedIds]);
+            setDeletedIds(activeDeleted);
+            saveLocalDeletedIds(activeDeleted);
+          }
+          if (Array.isArray(sData.data)) {
+            serverList = sData.data;
+          }
         }
       } catch {}
 
-      // 3. Unified merge of local, cloud, and server data
-      let unified = mergeSpecimenLists(specimens, cloudList);
-      unified = mergeSpecimenLists(unified, serverList);
-      const sanitized = sanitizeSpecimens(unified);
+      // 3. Unified merge of local, cloud, and server data strictly filtering deleted
+      let unified = mergeSpecimenLists(specimens, cloudList, activeDeleted);
+      unified = mergeSpecimenLists(unified, serverList, activeDeleted);
+      const sanitized = sanitizeSpecimens(unified, activeDeleted);
 
       // 4. Update local state and storage
       setSpecimens(sanitized);
@@ -651,11 +806,16 @@ export default function App() {
       setCloudSyncStatus('connected');
       setLastCloudSyncTime(new Date().toLocaleTimeString('es-CR'));
 
-      // 6. Push unified list to backend database file
+      // 6. Push unified list to backend database file with deletedIds
       fetch('/api/database/specimens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ specimens: sanitized, deviceId, lastModified: Date.now() }),
+        body: JSON.stringify({
+          specimens: sanitized,
+          deletedIds: Array.from(activeDeleted),
+          deviceId,
+          lastModified: Date.now(),
+        }),
       }).catch(() => {});
 
       cacheAllSpecimensMedia(sanitized).catch(() => {});
@@ -673,7 +833,10 @@ export default function App() {
   };
 
   const handleResetToInitial = () => {
-    persistSpecimens(INITIAL_SPECIMENS);
+    const emptyDeleted = new Set<string>();
+    setDeletedIds(emptyDeleted);
+    saveLocalDeletedIds(emptyDeleted);
+    persistSpecimens(INITIAL_SPECIMENS, emptyDeleted);
     setCurrentSpecimen(INITIAL_SPECIMENS[0]);
     localStorage.removeItem(CHANGED_KEY);
     setSyncStatusToast('Bitácora de este equipo restablecida al catálogo de referencia limpio.');

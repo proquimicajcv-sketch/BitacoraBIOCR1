@@ -173,6 +173,10 @@ export async function saveSpecimenToCloud(specimen: SpecimenRecord): Promise<voi
     const docRef = doc(db, 'specimens', specimen.id);
     const cleanData = await cleanSpecimenForCloud(specimen);
     await setDoc(docRef, cleanData, { merge: true });
+    // Remove from deleted_specimens if it was previously marked deleted
+    try {
+      await deleteDoc(doc(db, 'deleted_specimens', specimen.id));
+    } catch {}
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
     throw error;
@@ -180,16 +184,68 @@ export async function saveSpecimenToCloud(specimen: SpecimenRecord): Promise<voi
 }
 
 /**
- * Delete specimen from cloud database
+ * Delete specimen from cloud database and publish tombstone
+ * so all linked devices instantly remove it and never resurrect it.
  */
 export async function deleteSpecimenFromCloud(specimenId: string): Promise<void> {
   const path = `specimens/${specimenId}`;
   try {
     const docRef = doc(db, 'specimens', specimenId);
     await deleteDoc(docRef);
+
+    // Write tombstone to deleted_specimens collection
+    const tombstoneRef = doc(db, 'deleted_specimens', specimenId);
+    await setDoc(tombstoneRef, {
+      id: specimenId,
+      deletedAt: new Date().toISOString(),
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
     throw error;
+  }
+}
+
+/**
+ * Real-time subscription to deleted_specimens collection.
+ * When any device deletes a specimen, all linked devices get notified immediately.
+ */
+export function subscribeToDeletedSpecimens(
+  onDeletedUpdate: (deletedIds: string[]) => void
+): () => void {
+  const deletedCol = collection(db, 'deleted_specimens');
+
+  const unsubscribe = onSnapshot(
+    deletedCol,
+    (snapshot) => {
+      const ids: string[] = [];
+      snapshot.forEach((docSnap) => {
+        ids.push(docSnap.id);
+      });
+      onDeletedUpdate(ids);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.GET, 'deleted_specimens');
+    }
+  );
+
+  return unsubscribe;
+}
+
+/**
+ * Directly fetch all deleted specimen IDs from Firestore tombstones
+ */
+export async function fetchDeletedSpecimensFromCloud(): Promise<string[]> {
+  try {
+    const snap = await getDocs(collection(db, 'deleted_specimens'));
+    if (snap.empty) return [];
+    const ids: string[] = [];
+    snap.forEach((docSnap) => {
+      ids.push(docSnap.id);
+    });
+    return ids;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'deleted_specimens');
+    return [];
   }
 }
 

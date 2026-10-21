@@ -8,5 +8,9 @@ service cloud.firestore {
     match /specimens/{specimenId} {
       allow read, write: if true;
     }
+
+    match /deleted_specimens/{deletedId} {
+      allow read, write: if true;
+    }
   }
 }

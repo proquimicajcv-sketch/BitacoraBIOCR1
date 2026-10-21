@@ -25,6 +25,7 @@ const ai = new GoogleGenAI({
 
 const DB_DIR = path.resolve('data');
 const DB_FILE = path.join(DB_DIR, 'specimens-database.json');
+const DELETED_FILE = path.join(DB_DIR, 'deleted-specimens.json');
 
 // Ensure database directory exists
 if (!fs.existsSync(DB_DIR)) {
@@ -32,6 +33,35 @@ if (!fs.existsSync(DB_DIR)) {
     fs.mkdirSync(DB_DIR, { recursive: true });
   } catch (err) {
     console.warn('Could not create data dir:', err);
+  }
+}
+
+function getDeletedIds(): Set<string> {
+  if (fs.existsSync(DELETED_FILE)) {
+    try {
+      const arr = JSON.parse(fs.readFileSync(DELETED_FILE, 'utf-8'));
+      if (Array.isArray(arr)) return new Set(arr);
+    } catch {}
+  }
+  return new Set();
+}
+
+function saveDeletedId(id: string) {
+  if (!id) return;
+  const current = getDeletedIds();
+  current.add(id);
+  try {
+    fs.writeFileSync(DELETED_FILE, JSON.stringify(Array.from(current), null, 2), 'utf-8');
+  } catch {}
+}
+
+function removeDeletedId(id: string) {
+  if (!id) return;
+  const current = getDeletedIds();
+  if (current.delete(id)) {
+    try {
+      fs.writeFileSync(DELETED_FILE, JSON.stringify(Array.from(current), null, 2), 'utf-8');
+    } catch {}
   }
 }
 
@@ -55,16 +85,19 @@ function getTargetDbFile(deviceId?: string): string {
 app.get('/api/database/specimens', (req: Request, res: Response): void => {
   try {
     const deviceId = req.query.deviceId as string | undefined;
+    const deletedSet = getDeletedIds();
 
     // Check central shared database first for cross-device synchronization
     if (fs.existsSync(DB_FILE)) {
       const content = fs.readFileSync(DB_FILE, 'utf-8');
       const data = JSON.parse(content);
-      if (Array.isArray(data) && data.length > 0) {
+      if (Array.isArray(data)) {
         const stats = fs.statSync(DB_FILE);
+        const filteredData = data.filter((s: any) => s && s.id && !deletedSet.has(s.id));
         res.json({
           success: true,
-          data,
+          data: filteredData,
+          deletedIds: Array.from(deletedSet),
           deviceId: deviceId || 'global',
           lastModified: Math.max(serverDbLastModified, stats.mtimeMs),
         });
@@ -78,11 +111,13 @@ app.get('/api/database/specimens', (req: Request, res: Response): void => {
       if (fs.existsSync(targetFile)) {
         const content = fs.readFileSync(targetFile, 'utf-8');
         const data = JSON.parse(content);
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           const stats = fs.statSync(targetFile);
+          const filteredData = data.filter((s: any) => s && s.id && !deletedSet.has(s.id));
           res.json({
             success: true,
-            data,
+            data: filteredData,
+            deletedIds: Array.from(deletedSet),
             deviceId,
             lastModified: stats.mtimeMs,
           });
@@ -91,20 +126,28 @@ app.get('/api/database/specimens', (req: Request, res: Response): void => {
       }
     }
 
-    res.json({ success: true, data: null, lastModified: 0 });
+    res.json({ success: true, data: [], deletedIds: Array.from(deletedSet), lastModified: 0 });
   } catch (err: any) {
     console.warn('Error reading database file:', err);
-    res.json({ success: true, data: null, lastModified: 0 });
+    res.json({ success: true, data: [], deletedIds: Array.from(getDeletedIds()), lastModified: 0 });
   }
 });
 
 function mergeSpecimens(existingList: any[], incomingList: any[]): any[] {
-  if (!Array.isArray(existingList) || existingList.length === 0) return incomingList;
-  if (!Array.isArray(incomingList) || incomingList.length === 0) return existingList;
+  const deletedSet = getDeletedIds();
+  const cleanExisting = (Array.isArray(existingList) ? existingList : []).filter(
+    (e: any) => e && e.id && !deletedSet.has(e.id)
+  );
+  const cleanIncoming = (Array.isArray(incomingList) ? incomingList : []).filter(
+    (i: any) => i && i.id && !deletedSet.has(i.id)
+  );
 
-  const result: any[] = [...existingList];
+  if (cleanExisting.length === 0) return cleanIncoming;
+  if (cleanIncoming.length === 0) return cleanExisting;
 
-  for (const incoming of incomingList) {
+  const result: any[] = [...cleanExisting];
+
+  for (const incoming of cleanIncoming) {
     const idx = result.findIndex(
       (e) => (incoming.id && e.id === incoming.id) ||
              (incoming.scientificName && e.scientificName === incoming.scientificName)
@@ -227,11 +270,27 @@ function mergeSpecimens(existingList: any[], incomingList: any[]): any[] {
 
 app.post('/api/database/specimens', (req: Request, res: Response): void => {
   try {
-    const { specimens, lastModified, deviceId } = req.body;
+    const { specimens, lastModified, deviceId, deletedIds } = req.body;
     if (!Array.isArray(specimens)) {
       res.status(400).json({ success: false, error: 'Formato inválido' });
       return;
     }
+
+    if (Array.isArray(deletedIds)) {
+      for (const dId of deletedIds) {
+        if (typeof dId === 'string' && dId) {
+          saveDeletedId(dId);
+        }
+      }
+    }
+
+    // If any incoming specimen was explicitly provided, un-delete it
+    for (const s of specimens) {
+      if (s && s.id) {
+        removeDeletedId(s.id);
+      }
+    }
+
     const updatedTime = Number(lastModified) || Date.now();
     serverDbLastModified = updatedTime;
 
@@ -249,6 +308,10 @@ app.post('/api/database/specimens', (req: Request, res: Response): void => {
       }
     }
 
+    // Strictly filter out any deleted specimen
+    const currentDeleted = getDeletedIds();
+    finalSpecimens = finalSpecimens.filter((s: any) => s && s.id && !currentDeleted.has(s.id));
+
     // CRITICAL: Always write merged database to DB_FILE so all devices stay updated
     fs.writeFileSync(DB_FILE, JSON.stringify(finalSpecimens, null, 2), 'utf-8');
 
@@ -264,12 +327,71 @@ app.post('/api/database/specimens', (req: Request, res: Response): void => {
       success: true,
       data: finalSpecimens,
       count: finalSpecimens.length,
+      deletedIds: Array.from(currentDeleted),
       deviceId: deviceId || 'global',
       lastModified: updatedTime,
       message: 'Base de datos y avistamientos sincronizados permanentemente para todos los dispositivos',
     });
   } catch (err: any) {
     console.error('Error writing database file:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/database/specimens/:id', (req: Request, res: Response): void => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ success: false, error: 'ID requerido' });
+      return;
+    }
+
+    saveDeletedId(id);
+    serverDbLastModified = Date.now();
+
+    // 1. Purge from central DB_FILE
+    if (fs.existsSync(DB_FILE)) {
+      try {
+        const content = fs.readFileSync(DB_FILE, 'utf-8');
+        const currentData = JSON.parse(content);
+        if (Array.isArray(currentData)) {
+          const filtered = currentData.filter((s: any) => s && s.id !== id);
+          fs.writeFileSync(DB_FILE, JSON.stringify(filtered, null, 2), 'utf-8');
+        }
+      } catch (err) {
+        console.warn('Error purging from DB_FILE on delete:', err);
+      }
+    }
+
+    // 2. Purge from all device-specific backup files
+    if (fs.existsSync(DEVICES_DIR)) {
+      try {
+        const files = fs.readdirSync(DEVICES_DIR);
+        for (const file of files) {
+          if (file.endsWith('.json')) {
+            const filePath = path.join(DEVICES_DIR, file);
+            try {
+              const devContent = fs.readFileSync(filePath, 'utf-8');
+              const devData = JSON.parse(devContent);
+              if (Array.isArray(devData)) {
+                const devFiltered = devData.filter((s: any) => s && s.id !== id);
+                fs.writeFileSync(filePath, JSON.stringify(devFiltered, null, 2), 'utf-8');
+              }
+            } catch {}
+          }
+        }
+      } catch {}
+    }
+
+    res.json({
+      success: true,
+      deletedId: id,
+      deletedIds: Array.from(getDeletedIds()),
+      lastModified: serverDbLastModified,
+      message: 'Espécimen eliminado permanentemente en servidor y dispositivos vinculados',
+    });
+  } catch (err: any) {
+    console.error('Error in DELETE /api/database/specimens/:id:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
