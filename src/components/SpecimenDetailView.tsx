@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   SpecimenRecord,
   BioacousticRecord,
+  PhotoRecord,
   SightingEntry,
   SympatricSpecies,
   VitalityStatus,
@@ -533,6 +534,47 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
       console.error('Error al subir foto:', err);
       alert('Error al guardar fotografía: ' + (err?.message || err));
     }
+  };
+
+  const handleAddPhotoToGallery = async (file: File) => {
+    if (!file) return;
+    try {
+      const permanentUrl = await saveImageOfflineAndServer(file, 'specimen_gallery');
+      const newPhoto: PhotoRecord = {
+        id: `photo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        url: permanentUrl,
+        label: `Vista de Campo #${(specimen.additionalPhotos?.length || 0) + 1}`,
+        description: `Fotografía complementaria registrada en campo (${file.name}).`,
+      };
+
+      const updatedPhotos = [...(specimen.additionalPhotos || []), newPhoto];
+      const updatedSpecimen: SpecimenRecord = {
+        ...specimen,
+        additionalPhotos: updatedPhotos,
+      };
+
+      if (onSaveSpecimen) {
+        onSaveSpecimen(updatedSpecimen);
+      }
+      setSaveSuccessMsg('¡Nueva fotografía agregada a la galería y sincronizada!');
+      setTimeout(() => setSaveSuccessMsg(null), 4000);
+    } catch (err: any) {
+      console.error('Error al agregar foto a la galería:', err);
+      alert('Error al guardar fotografía en la galería: ' + (err?.message || err));
+    }
+  };
+
+  const handleRemovePhotoFromGallery = (photoId: string) => {
+    const updatedPhotos = (specimen.additionalPhotos || []).filter((p) => p.id !== photoId);
+    const updatedSpecimen: SpecimenRecord = {
+      ...specimen,
+      additionalPhotos: updatedPhotos,
+    };
+    if (onSaveSpecimen) {
+      onSaveSpecimen(updatedSpecimen);
+    }
+    setSaveSuccessMsg('Fotografía eliminada de la galería.');
+    setTimeout(() => setSaveSuccessMsg(null), 3000);
   };
 
   const handleSaveCuriousFindingPhoto = async (sightingId: string, newPhotoUrlOrFile: string | File, newDesc?: string) => {
@@ -1368,80 +1410,122 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
         </section>
 
         {/* Specimen Morphological Gallery Mosaic */}
-        {specimen.additionalPhotos.length > 0 && (
-          <section className="px-4 mt-4">
-            <div className="p-4 rounded-xl bg-white shadow-sm flex flex-col gap-3 border border-[#e1e3dd]/80">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-[16px] text-[#002217] flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[#006c49] text-[20px]">photo_library</span>
-                  Registros Fotográficos Complementarios
-                </h3>
-                <span className="font-mono text-[11px] text-[#414844] font-semibold">
-                  {specimen.additionalPhotos.length} Archivos
-                </span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {specimen.additionalPhotos.map((photo) => (
-                  <div
-                    key={photo.id}
-                    className="relative rounded-lg overflow-hidden h-28 group bg-[#e7e9e3] border border-[#c1c8c3]/40 hover:border-[#006c49] transition-all"
-                  >
-                    <div
-                      onClick={() =>
-                        setActivePhotoModal({
-                          id: photo.id,
-                          url: photo.url,
-                          label: photo.label,
-                          desc: photo.description,
-                        })
-                      }
-                      className="w-full h-full cursor-pointer"
-                    >
-                      <img
-                        src={photo.url}
-                        alt={photo.label}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        onError={(e) => {
-                          const isMacho = photo.id === 'photo-4' || (photo.label && photo.label.toLowerCase().includes('macho tuerto'));
-                          handleImageOfflineFallback(e.currentTarget as HTMLImageElement, isMacho ? '/hallazgo_macho_un_ojo.jpg' : '/isthmohyla_nacientes.jpg');
-                        }}
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
-                    </div>
+        <section className="px-4 mt-4">
+          <div className="p-4 rounded-xl bg-white shadow-sm flex flex-col gap-3 border border-[#e1e3dd]/80">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-[16px] text-[#002217] flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[#006c49] text-[20px]">photo_library</span>
+                Registros Fotográficos Complementarios / Galería de Vistas
+              </h3>
+              <span className="font-mono text-[11px] text-[#414844] font-semibold">
+                {specimen.additionalPhotos?.length || 0} Archivos
+              </span>
+            </div>
 
-                    {/* Input de archivo nativo directo */}
-                    <input
-                      type="file"
-                      id={`file-input-${photo.id}`}
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          handleDirectPhotoUpload(photo.id, file);
-                        }
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {(specimen.additionalPhotos || []).map((photo) => (
+                <div
+                  key={photo.id}
+                  className="relative rounded-lg overflow-hidden h-28 group bg-[#e7e9e3] border border-[#c1c8c3]/40 hover:border-[#006c49] transition-all"
+                >
+                  <div
+                    onClick={() =>
+                      setActivePhotoModal({
+                        id: photo.id,
+                        url: photo.url,
+                        label: photo.label,
+                        desc: photo.description,
+                      })
+                    }
+                    className="w-full h-full cursor-pointer"
+                  >
+                    <img
+                      src={photo.url}
+                      alt={photo.label}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={(e) => {
+                        const isMacho = photo.id === 'photo-4' || (photo.label && photo.label.toLowerCase().includes('macho tuerto'));
+                        handleImageOfflineFallback(e.currentTarget as HTMLImageElement, isMacho ? '/hallazgo_macho_un_ojo.jpg' : '/isthmohyla_nacientes.jpg');
                       }}
                     />
-
-                    {/* Botón táctil directo para sustituir foto */}
-                    <label
-                      htmlFor={`file-input-${photo.id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="absolute top-1.5 right-1.5 w-8 h-8 rounded-full bg-[#002217] hover:bg-[#006c49] active:scale-90 text-[#6cf8bb] flex items-center justify-center transition-all shadow-md cursor-pointer z-20 border border-[#6cf8bb]/60 hover:border-white"
-                      title="Sustituir fotografía desde tu dispositivo"
-                    >
-                      <span className="material-symbols-outlined text-[17px]">edit</span>
-                    </label>
-
-                    <span className="absolute bottom-1.5 left-1.5 right-1.5 px-1.5 py-0.5 rounded bg-[#002217]/90 text-white font-mono text-[10px] truncate block pointer-events-none">
-                      {photo.label}
-                    </span>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
                   </div>
-                ))}
-              </div>
+
+                  {/* Input de archivo nativo directo */}
+                  <input
+                    type="file"
+                    id={`file-input-${photo.id}`}
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        handleDirectPhotoUpload(photo.id, file);
+                      }
+                    }}
+                  />
+
+                  {/* Botón táctil para eliminar foto de la galería */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemovePhotoFromGallery(photo.id);
+                    }}
+                    className="absolute top-1.5 left-1.5 w-7 h-7 rounded-full bg-red-600/90 hover:bg-red-700 text-white flex items-center justify-center transition-all shadow-md cursor-pointer z-20"
+                    title="Eliminar esta foto de la galería"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">delete</span>
+                  </button>
+
+                  {/* Botón táctil directo para sustituir foto */}
+                  <label
+                    htmlFor={`file-input-${photo.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-[#002217] hover:bg-[#006c49] active:scale-90 text-[#6cf8bb] flex items-center justify-center transition-all shadow-md cursor-pointer z-20 border border-[#6cf8bb]/60 hover:border-white"
+                    title="Sustituir fotografía desde tu dispositivo"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">edit</span>
+                  </label>
+
+                  <span className="absolute bottom-1.5 left-1.5 right-1.5 px-1.5 py-0.5 rounded bg-[#002217]/90 text-white font-mono text-[10px] truncate block pointer-events-none">
+                    {photo.label}
+                  </span>
+                </div>
+              ))}
+
+              {/* Botón interactivo para añadir nueva foto a la galería */}
+              <label
+                htmlFor="add-new-gallery-photo-input"
+                className="rounded-lg border-2 border-dashed border-[#c1c8c3] hover:border-[#006c49] h-28 flex flex-col items-center justify-center gap-1 cursor-pointer bg-[#fbfdf9] hover:bg-[#eef9f2] transition-all text-[#006c49] p-2 text-center group"
+                title="Subir nueva fotografía a la galería de este espécimen"
+              >
+                <span className="material-symbols-outlined text-[24px] group-hover:scale-110 transition-transform">
+                  add_a_photo
+                </span>
+                <span className="text-[11px] font-bold leading-tight">
+                  + Agregar Foto
+                </span>
+                <span className="text-[9px] text-[#717974] leading-none">
+                  Desde dispositivo
+                </span>
+                <input
+                  type="file"
+                  id="add-new-gallery-photo-input"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      handleAddPhotoToGallery(file);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </label>
             </div>
-          </section>
-        )}
+          </div>
+        </section>
 
         {/* ESPACIO PERMANENTE: HALLAZGOS CURIOSOS DE CAMPO (Ordenados por fecha de visita) */}
         {(() => {

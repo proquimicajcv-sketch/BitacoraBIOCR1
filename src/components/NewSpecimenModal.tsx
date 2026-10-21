@@ -19,7 +19,7 @@ import {
   findNearestHotspot,
   detectLocationAndLifeZone,
 } from '../data/costaRicaData';
-import { saveImageOfflineAndServer } from '../utils/offlineImageCache';
+import { saveImageOfflineAndServer, handleImageOfflineFallback } from '../utils/offlineImageCache';
 import { compressDataUrl } from '../utils/imageCompress';
 
 interface NewSpecimenModalProps {
@@ -201,6 +201,9 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
   const [newPhotoLabel, setNewPhotoLabel] = useState('');
   const [newPhotoDesc, setNewPhotoDesc] = useState('');
+  const [isUploadingGalleryPhoto, setIsUploadingGalleryPhoto] = useState(false);
+  const [galleryErrorMsg, setGalleryErrorMsg] = useState<string | null>(null);
+  const galleryFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Sightings / Entradas de Vistas
   const [sightingsList, setSightingsList] = useState<SightingEntry[]>(
@@ -461,17 +464,91 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
 
 
   const handleAddCustomPhoto = () => {
-    if (!newPhotoUrl.trim()) return;
+    setGalleryErrorMsg(null);
+    let url = newPhotoUrl.trim();
+    if (!url) {
+      // Si el usuario no especificó URL, abre directamente el explorador de archivos para subir una foto
+      galleryFileInputRef.current?.click();
+      return;
+    }
+
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('/') && !url.startsWith('data:') && !url.startsWith('blob:')) {
+      url = 'https://' + url;
+    }
+
     const newEntry: PhotoRecord = {
-      id: `photo-${Date.now()}`,
-      url: newPhotoUrl.trim(),
+      id: `photo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      url,
       label: newPhotoLabel.trim() || 'Vista adicional',
-      description: newPhotoDesc.trim() || 'Fotografía de campo agregada por URL.',
+      description: newPhotoDesc.trim() || 'Fotografía de campo agregada a la bitácora.',
     };
     setAdditionalPhotosList([...additionalPhotosList, newEntry]);
     setNewPhotoUrl('');
     setNewPhotoLabel('');
     setNewPhotoDesc('');
+  };
+
+  const handleGalleryFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingGalleryPhoto(true);
+    setGalleryErrorMsg(null);
+
+    try {
+      const addedPhotos: PhotoRecord[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!file.type.startsWith('image/')) continue;
+
+        let base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        if (base64.startsWith('data:image')) {
+          try {
+            base64 = await compressDataUrl(base64, 1200, 0.82);
+          } catch {}
+        }
+
+        let finalUrl = base64;
+        try {
+          const savedUrl = await saveImageOfflineAndServer(base64, 'gallery');
+          if (savedUrl) finalUrl = savedUrl;
+        } catch (err) {
+          console.warn('Fallback guardando imagen en galería:', err);
+        }
+
+        const labelText =
+          newPhotoLabel.trim() ||
+          (files.length === 1 ? 'Vista de Campo' : `Vista de Campo ${additionalPhotosList.length + i + 1}`);
+        const descText =
+          newPhotoDesc.trim() || `Fotografía de campo capturada para la bitácora (${file.name}).`;
+
+        addedPhotos.push({
+          id: `photo-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          url: finalUrl,
+          label: labelText,
+          description: descText,
+        });
+      }
+
+      if (addedPhotos.length > 0) {
+        setAdditionalPhotosList((prev) => [...prev, ...addedPhotos]);
+        setNewPhotoUrl('');
+        setNewPhotoLabel('');
+        setNewPhotoDesc('');
+      }
+    } catch (err) {
+      console.error('Error al subir fotos a la galería:', err);
+      setGalleryErrorMsg('No se pudo procesar la fotografía. Intenta nuevamente.');
+    } finally {
+      setIsUploadingGalleryPhoto(false);
+      if (e.target) e.target.value = '';
+    }
   };
 
   const handleRemoveCustomPhoto = (id: string) => {
@@ -1424,74 +1501,156 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
             </div>
           </div>
 
-          {/* GALERÍA DE FOTOS ADICIONALES POR URL */}
-          <div className="p-3.5 rounded-xl bg-white border border-[#c1c8c3] flex flex-col gap-3">
-            <div className="flex items-center justify-between">
+          {/* GALERÍA DE VISTAS Y FOTOGRAFÍAS */}
+          <div className="p-4 rounded-xl bg-white border border-[#c1c8c3] flex flex-col gap-3.5 shadow-xs">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <label className="text-xs font-bold text-[#002217] flex items-center gap-1.5 uppercase">
-                <span className="material-symbols-outlined text-[#006c49] text-[18px]">photo_library</span>
-                Galería de Vistas &amp; Fotos por URL ({additionalPhotosList.length})
+                <span className="material-symbols-outlined text-[#006c49] text-[20px]">photo_library</span>
+                <span>Galería de Vistas & Fotografías ({additionalPhotosList.length})</span>
               </label>
-              <span className="text-[11px] text-[#717974] font-mono">Persistencia en cualquier equipo</span>
+              <span className="text-[11px] text-[#717974] font-mono">
+                Sincronización permanente en todos los dispositivos
+              </span>
             </div>
 
             {/* List of current additional photos */}
-            {additionalPhotosList.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {additionalPhotosList.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
                 {additionalPhotosList.map((photo) => (
-                  <div key={photo.id} className="relative rounded-lg overflow-hidden border border-[#c1c8c3] bg-[#f8faf4] p-1.5 flex flex-col gap-1">
-                    <img src={photo.url} alt={photo.label} className="w-full h-16 object-cover rounded" />
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-[#002217] truncate">{photo.label}</span>
+                  <div
+                    key={photo.id}
+                    className="relative rounded-xl overflow-hidden border border-[#c1c8c3] bg-[#f8faf4] p-1.5 flex flex-col gap-1.5 group shadow-2xs hover:border-[#006c49] transition-all"
+                  >
+                    <div className="relative w-full h-24 bg-[#0f382a] rounded-lg overflow-hidden">
+                      <img
+                        src={photo.url}
+                        alt={photo.label}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          handleImageOfflineFallback(e.currentTarget as HTMLImageElement, '/isthmohyla_nacientes.jpg');
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
                       <button
                         type="button"
                         onClick={() => handleRemoveCustomPhoto(photo.id)}
-                        className="text-red-500 hover:text-red-700 cursor-pointer"
-                        title="Eliminar foto"
+                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-600/90 hover:bg-red-700 text-white flex items-center justify-center transition-colors cursor-pointer shadow-sm"
+                        title="Eliminar esta fotografía de la galería"
                       >
-                        <span className="material-symbols-outlined text-[15px]">delete</span>
+                        <span className="material-symbols-outlined text-[14px]">delete</span>
                       </button>
+                    </div>
+                    <div className="flex flex-col px-0.5">
+                      <span className="font-bold text-[#002217] text-[11px] truncate" title={photo.label}>
+                        {photo.label}
+                      </span>
+                      {photo.description && (
+                        <span className="text-[10px] text-[#717974] truncate" title={photo.description}>
+                          {photo.description}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
+            ) : (
+              <div className="p-4 rounded-xl border border-dashed border-[#c1c8c3] bg-[#fcfdfa] text-center flex flex-col items-center gap-1.5 text-xs text-[#717974]">
+                <span className="material-symbols-outlined text-2xl text-[#006c49]">add_photo_alternate</span>
+                <span className="font-semibold text-[#002217]">No hay vistas adicionales registradas todavía</span>
+                <span className="text-[11px]">Sube fotografías desde tu dispositivo (cámara/galería) o ingresa un enlace web abajo.</span>
+              </div>
             )}
 
-            {/* Add new photo by URL */}
-            <div className="p-2.5 rounded-lg bg-[#f8faf4] border border-[#c1c8c3]/60 flex flex-col gap-2">
-              <span className="text-[11px] font-bold text-[#002217]">Agregar Nueva Fotografía o Vista:</span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input
-                  type="url"
-                  value={newPhotoUrl}
-                  onChange={(e) => setNewPhotoUrl(e.target.value)}
-                  placeholder="https://... URL pública de la imagen"
-                  className="px-2.5 py-1.5 rounded bg-white border border-[#c1c8c3] text-xs text-[#191c19]"
-                />
-                <input
-                  type="text"
-                  value={newPhotoLabel}
-                  onChange={(e) => setNewPhotoLabel(e.target.value)}
-                  placeholder="Etiqueta (ej. Ojo, Flanco, Puesta)"
-                  className="px-2.5 py-1.5 rounded bg-white border border-[#c1c8c3] text-xs text-[#191c19]"
-                />
+            {/* Add new photo: File Upload (Camera/Device) or URL input */}
+            <div className="p-3 rounded-xl bg-[#f4f6f0] border border-[#c1c8c3]/80 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-xs font-bold text-[#002217] flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[16px] text-[#006c49]">add_circle</span>
+                  <span>Agregar Fotografía o Vista de Campo:</span>
+                </span>
+                {isUploadingGalleryPhoto && (
+                  <span className="text-xs text-[#006c49] font-bold flex items-center gap-1 animate-pulse">
+                    <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
+                    <span>Procesando y optimizando imagen...</span>
+                  </span>
+                )}
               </div>
-              <div className="flex items-center justify-between gap-2">
+
+              {/* Input de archivo oculto */}
+              <input
+                ref={galleryFileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                capture="environment"
+                onChange={handleGalleryFileUpload}
+                className="hidden"
+              />
+
+              {/* Botón principal: Subir desde Dispositivo / Cámara */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  disabled={isUploadingGalleryPhoto}
+                  onClick={() => galleryFileInputRef.current?.click()}
+                  className="px-3.5 py-2 rounded-xl bg-[#002217] hover:bg-[#0f382a] text-[#6cf8bb] text-xs font-bold flex items-center gap-2 border border-[#6cf8bb]/40 cursor-pointer transition-all shadow-xs active:scale-[0.98]"
+                >
+                  <span className="material-symbols-outlined text-[18px]">add_a_photo</span>
+                  <span>Subir Foto(s) desde este Dispositivo</span>
+                </button>
+                <span className="text-[11px] text-[#717974]">o ingresar datos / enlace web:</span>
+              </div>
+
+              {/* Inputs para etiqueta, descripción y URL opcional */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-[#414844] mb-0.5">
+                    Etiqueta / Vista (ej. Juvenil, Detalle Ocular, Flanco):
+                  </label>
+                  <input
+                    type="text"
+                    value={newPhotoLabel}
+                    onChange={(e) => setNewPhotoLabel(e.target.value)}
+                    placeholder="Etiqueta (ej. Juvenil, Vista Dorsal)"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-[#c1c8c3] text-xs text-[#191c19] focus:outline-none focus:ring-1 focus:ring-[#006c49]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#414844] mb-0.5">
+                    URL o enlace web de la imagen (opcional si subes archivo):
+                  </label>
+                  <input
+                    type="text"
+                    value={newPhotoUrl}
+                    onChange={(e) => setNewPhotoUrl(e.target.value)}
+                    placeholder="https://... o ruta de imagen"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-[#c1c8c3] text-xs text-[#191c19] focus:outline-none focus:ring-1 focus:ring-[#006c49]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
                 <input
                   type="text"
                   value={newPhotoDesc}
                   onChange={(e) => setNewPhotoDesc(e.target.value)}
-                  placeholder="Descripción científica de la toma..."
-                  className="flex-1 px-2.5 py-1.5 rounded bg-white border border-[#c1c8c3] text-xs text-[#191c19]"
+                  placeholder="Descripción científica de la toma (ej. Morfo juvenil observado en sotobosque)..."
+                  className="w-full sm:flex-1 px-2.5 py-1.5 rounded-lg bg-white border border-[#c1c8c3] text-xs text-[#191c19] focus:outline-none focus:ring-1 focus:ring-[#006c49]"
                 />
                 <button
                   type="button"
                   onClick={handleAddCustomPhoto}
-                  className="px-3 py-1.5 rounded bg-[#002217] hover:bg-[#0f382a] text-[#6cf8bb] font-bold text-xs flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                  className="px-4 py-2 rounded-xl bg-[#006c49] hover:bg-[#005236] text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-xs active:scale-[0.98] transition-all"
+                  title="Agregar foto por URL o abrir explorador de archivos"
                 >
-                  <span className="material-symbols-outlined text-[15px]">add</span>
-                  <span>Agregar Foto</span>
+                  <span className="material-symbols-outlined text-[16px]">add</span>
+                  <span>+ Agregar Foto</span>
                 </button>
               </div>
+
+              {galleryErrorMsg && (
+                <span className="text-[11px] text-red-600 font-medium">{galleryErrorMsg}</span>
+              )}
             </div>
           </div>
 
