@@ -67,7 +67,7 @@ export function formatDarwinCoreRecord(specimen: SpecimenRecord, obfuscateCoordi
       snoutVentLengthMm: specimen.morphometrics.snoutVentLengthMm,
       coloration: specimen.morphometrics.colorationAndAnatomy,
       ethology: specimen.morphometrics.ethologyAndReproduction,
-      sympatricCount: specimen.morphometrics.sympatricSpecies.length,
+      sympatricCount: specimen.morphometrics?.sympatricSpecies?.length || 0,
       conservationArea: specimen.georeference.conservationArea,
       holdridgeLifeZone: specimen.georeference.lifeZone,
     }),

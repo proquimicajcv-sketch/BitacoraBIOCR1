@@ -75,10 +75,10 @@ Tu tarea es:
 12. Dar puntaje de confianza (0.0 a 1.0) y explicación diagnóstica.
 13. El campo taxonGroup DEBE ser estrictamente uno de los grupos taxonómicos oficiales de BioBitácora Costa Rica:
     "Mammalia" | "Aves" | "Reptilia" | "Amphibia" | "Actinopterygii" | "Insecta" | "Mollusca" | "Fungi" | "Orchidaceae" | "Arboles" | "Arbustos_Herbaceas" | "Pteridophyta"
-    (Para orquídeas, usar prioritariamente "Orchidaceae"; para árboles forestales/maderables, "Arboles"; para arbustos/hierbas de sotobosque, "Arbustos_Herbaceas"; para helechos y musgos, "Pteridophyta"; para peces, "Actinopterygii"; para caracoles/moluscos, "Mollusca"; para hongos y líquenes, "Fungi").
+14. IMPORTANTE: NO coloques especies simpátricas automáticamente. El campo sympatricSpecies debe ser siempre un arreglo vacío [] ya que las especies simpátricas de la zona deben registrarse manualmente por el investigador o bien omitirse en el avistamiento.
 
 Responde ÚNICAMENTE con un objeto JSON válido con la estructura solicitada conteniendo:
-scientificName, commonName, taxonGroup, realm, taxonomy, iucnStatus, citesStatus, morphometrics (snoutVentLengthMm, colorationAndAnatomy, ethologyAndReproduction, courtshipAndMating, interspecificRelations, confirmedScientificData, sympatricSpecies), suggestedHabitat (lifeZone, microhabitat, elevationMeters), bioacoustics, confidenceScore, identificationRationale.
+scientificName, commonName, taxonGroup, realm, taxonomy, iucnStatus, citesStatus, morphometrics (snoutVentLengthMm, colorationAndAnatomy, ethologyAndReproduction, courtshipAndMating, interspecificRelations, confirmedScientificData, sympatricSpecies: []), suggestedHabitat (lifeZone, microhabitat, elevationMeters), bioacoustics, confidenceScore, identificationRationale.
 `;
 
     const contents: Array<{

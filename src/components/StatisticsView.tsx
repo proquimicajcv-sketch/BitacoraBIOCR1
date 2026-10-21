@@ -364,7 +364,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
           <div className="p-3.5 rounded-2xl bg-white border border-[#c1c8c3]/70 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold text-[#414844]">Vertebrados</span>
-              <span className="material-symbols-outlined text-[#f59e0b] text-[18px]">cruelty_free</span>
+              <span className="material-symbols-outlined text-[#f59e0b] text-[18px]">pets</span>
             </div>
             <div className="mt-2">
               <span className="text-2xl font-black text-[#002217]">

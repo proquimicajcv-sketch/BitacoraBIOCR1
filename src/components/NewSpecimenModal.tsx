@@ -6,6 +6,7 @@ import {
   BioacousticRecord,
   PhotoRecord,
   SightingEntry,
+  SympatricSpecies,
   TAXON_GROUPS_REGISTRY,
   getTaxonMeta,
 } from '../types/specimen';
@@ -151,6 +152,14 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
     editingSpecimen?.morphometrics.confirmedScientificData || ''
   );
 
+  // Especies Simpátricas Registradas (Entrada manual u opción de omitir dato)
+  const [sympatricList, setSympatricList] = useState<SympatricSpecies[]>(
+    editingSpecimen?.morphometrics.sympatricSpecies || []
+  );
+  const [newSympSciName, setNewSympSciName] = useState('');
+  const [newSympCommonName, setNewSympCommonName] = useState('');
+  const [newSympCount, setNewSympCount] = useState<number>(1);
+
   // BIOACOUSTICS MANAGEMENT
   const [hasBioacoustics, setHasBioacoustics] = useState<boolean>(
     editingSpecimen ? !!editingSpecimen.bioacoustics : true
@@ -219,6 +228,10 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
   const [newSightingNotes, setNewSightingNotes] = useState('');
   const [showAddSighting, setShowAddSighting] = useState(false);
   const [editingSightingId, setEditingSightingId] = useState<string | null>(null);
+  const [newSightingSympatrics, setNewSightingSympatrics] = useState<SympatricSpecies[]>([]);
+  const [newSightSympSciName, setNewSightSympSciName] = useState('');
+  const [newSightSympCommonName, setNewSightSympCommonName] = useState('');
+  const [newSightSympCount, setNewSightSympCount] = useState<number>(1);
 
   const [collectionDate, setCollectionDate] = useState<string>(
     editingSpecimen?.collectionDate || new Date().toISOString().slice(0, 10)
@@ -263,6 +276,10 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
         setCourtshipNotes(editingSpecimen.morphometrics.courtshipAndMating || '');
         setInterspecificNotes(editingSpecimen.morphometrics.interspecificRelations || '');
         setConfirmedScienceNotes(editingSpecimen.morphometrics.confirmedScientificData || '');
+        setSympatricList(editingSpecimen.morphometrics.sympatricSpecies || []);
+        setNewSympSciName('');
+        setNewSympCommonName('');
+        setNewSympCount(1);
         setHasBioacoustics(!!editingSpecimen.bioacoustics);
         setAudioTitle(editingSpecimen.bioacoustics?.title || 'Canto de Anuncio');
         setAudioCallType(editingSpecimen.bioacoustics?.callType || 'Vocalización Territorial');
@@ -273,6 +290,7 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
         setSightingsList(editingSpecimen.sightings || []);
         setShowAddSighting(false);
         setEditingSightingId(null);
+        setNewSightingSympatrics([]);
       } else {
         // Reset to clean state for a new specimen registration
         const defaultCoords = initialCoords
@@ -303,6 +321,10 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
         setCourtshipNotes('');
         setInterspecificNotes('');
         setConfirmedScienceNotes('');
+        setSympatricList([]); // Limpio por defecto, sin autollenar especies simpátricas
+        setNewSympSciName('');
+        setNewSympCommonName('');
+        setNewSympCount(1);
         setHasBioacoustics(true);
         setAudioTitle('Canto de Anuncio');
         setAudioCallType('Vocalización Territorial');
@@ -313,6 +335,7 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
         setSightingsList([]);
         setShowAddSighting(false);
         setEditingSightingId(null);
+        setNewSightingSympatrics([]);
       }
     }
   }, [isOpen, editingSpecimen, initialCoords]);
@@ -470,6 +493,7 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
       behaviorObserved: newSightingBehavior.trim() || 'Observación registrada en campo.',
       microhabitat: microhabitat,
       notes: newSightingNotes.trim() || undefined,
+      sympatricSpecies: newSightingSympatrics.length > 0 ? newSightingSympatrics : undefined,
     };
 
     let updated: SightingEntry[] = [];
@@ -485,6 +509,7 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
     setNewSightingBehavior('');
     setNewSightingNotes('');
     setEditingSightingId(null);
+    setNewSightingSympatrics([]);
     setShowAddSighting(false);
   };
 
@@ -594,9 +619,7 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
         courtshipAndMating: courtshipNotes,
         interspecificRelations: interspecificNotes,
         confirmedScientificData: confirmedScienceNotes,
-        sympatricSpecies: editingSpecimen?.morphometrics.sympatricSpecies || [
-          { scientificName: 'Dendropsophus ebraccatus', commonName: 'Ranita reloj de arena', count: 3 },
-        ],
+        sympatricSpecies: sympatricList,
       },
 
       additionalPhotos: additionalPhotosList,
@@ -1264,6 +1287,141 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
                 className="w-full px-3 py-2 rounded-lg bg-white border border-[#c1c8c3] text-xs text-[#191c19] focus:ring-2 focus:ring-[#006c49]"
               />
             </div>
+
+            {/* ESPECIES SIMPÁTRICAS DE LA ZONA (OPCIONAL / ENTRADA MANUAL) */}
+            <div className="p-4 rounded-xl bg-white border border-[#c1c8c3] flex flex-col gap-3 shadow-2xs">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <label className="text-xs font-bold text-[#002217] uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[#006c49] text-[20px]">group_work</span>
+                  Especies Simpátricas de la Zona (Opcional)
+                </label>
+                <div className="flex items-center gap-2">
+                  {sympatricList.length === 0 ? (
+                    <span className="text-[11px] font-mono text-[#717974] bg-[#f0f2ec] px-2.5 py-0.5 rounded-full border border-[#c1c8c3]/60">
+                      Dato omitido en este registro
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-mono text-[#006c49] font-bold bg-[#c1ecd7] px-2.5 py-0.5 rounded-full border border-[#006c49]/30">
+                      {sympatricList.length} {sympatricList.length === 1 ? 'especie registrada' : 'especies registradas'}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <p className="text-[11px] text-[#414844] leading-relaxed">
+                Este campo es completamente opcional. Puedes omitir este dato o ingresar manualmente las especies simpátricas con las que comparte microhábitat si fueron constatadas en campo.
+              </p>
+
+              {/* Lista de especies simpátricas añadidas */}
+              {sympatricList.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {sympatricList.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-2.5 rounded-lg bg-[#f8faf4] border border-[#c1c8c3]/80"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold italic text-[#002217] text-xs">
+                            {item.scientificName}
+                          </span>
+                          {item.commonName && (
+                            <span className="text-[11px] text-[#414844]">
+                              ({item.commonName})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-mono text-[11px] font-bold text-[#006c49] bg-white px-2 py-0.5 rounded border border-[#e1e3dd]">
+                          N={item.count || 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSympatricList(sympatricList.filter((_, i) => i !== idx))}
+                          className="w-7 h-7 rounded bg-white border border-[#c1c8c3] text-[#717974] hover:text-red-600 hover:border-red-300 flex items-center justify-center transition-colors cursor-pointer"
+                          title="Eliminar esta especie simpátrica"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setSympatricList([])}
+                      className="text-[11px] text-[#717974] hover:text-red-600 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">clear_all</span>
+                      <span>Omitir todas (limpiar lista)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Formulario manual para agregar especie simpátrica */}
+              <div className="p-3 rounded-lg bg-[#f2f5ef] border border-[#d1dcd4] flex flex-col gap-2">
+                <span className="text-[11px] font-bold text-[#002217] flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[15px] text-[#006c49]">add_circle</span>
+                  Agregar especie simpátrica manualmente:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                  <div className="sm:col-span-5">
+                    <input
+                      type="text"
+                      value={newSympSciName}
+                      onChange={(e) => setNewSympSciName(e.target.value)}
+                      placeholder="Nombre científico (ej. Craugastor podiciferus)"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-[#c1c8c3] text-xs italic text-[#191c19] focus:ring-2 focus:ring-[#006c49]"
+                    />
+                  </div>
+                  <div className="sm:col-span-5">
+                    <input
+                      type="text"
+                      value={newSympCommonName}
+                      onChange={(e) => setNewSympCommonName(e.target.value)}
+                      placeholder="Nombre común (ej. Ranita de hojarasca)"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-[#c1c8c3] text-xs text-[#191c19] focus:ring-2 focus:ring-[#006c49]"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={newSympCount}
+                      onChange={(e) => setNewSympCount(Math.max(1, parseInt(e.target.value) || 1))}
+                      placeholder="N°"
+                      title="Cantidad de individuos observados"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-[#c1c8c3] text-xs font-mono font-bold text-[#191c19] focus:ring-2 focus:ring-[#006c49]"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newSympSciName.trim() && !newSympCommonName.trim()) return;
+                      setSympatricList([
+                        ...sympatricList,
+                        {
+                          scientificName: newSympSciName.trim() || newSympCommonName.trim(),
+                          commonName: newSympCommonName.trim() || newSympSciName.trim(),
+                          count: newSympCount > 0 ? newSympCount : 1,
+                        },
+                      ]);
+                      setNewSympSciName('');
+                      setNewSympCommonName('');
+                      setNewSympCount(1);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-[#006c49] hover:bg-[#005236] text-white text-xs font-bold flex items-center gap-1 cursor-pointer shadow-2xs"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">add</span>
+                    <span>+ Agregar Especie Simpátrica</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* GALERÍA DE FOTOS ADICIONALES POR URL */}
@@ -1380,6 +1538,7 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
                             );
                             setNewSightingBehavior(sight.behaviorObserved || '');
                             setNewSightingNotes(sight.notes || '');
+                            setNewSightingSympatrics(sight.sympatricSpecies ? [...sight.sympatricSpecies] : []);
                             setShowAddSighting(true);
                           }}
                           className="w-6 h-6 rounded bg-white border border-[#c1c8c3] text-[#006c49] hover:bg-[#006c49] hover:text-white flex items-center justify-center transition-colors cursor-pointer"
@@ -1399,6 +1558,22 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
                     </div>
                     <p className="text-[#414844]">{sight.behaviorObserved}</p>
                     {sight.notes && <p className="text-[11px] text-[#717974] italic">{sight.notes}</p>}
+                    {sight.sympatricSpecies && sight.sympatricSpecies.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-[#006c49] font-medium pt-1 border-t border-[#e1e3dd]/80">
+                        <span className="material-symbols-outlined text-[14px]">group_work</span>
+                        <span className="font-bold text-[10px] uppercase">Simpátricas observadas:</span>
+                        {sight.sympatricSpecies.map((sym, sIdx) => (
+                          <span
+                            key={sIdx}
+                            className="bg-white px-2 py-0.5 rounded border border-[#c1ecd7] text-[10px] font-mono"
+                          >
+                            <span className="italic font-semibold">{sym.scientificName}</span>
+                            {sym.commonName && <span className="text-[#414844]"> ({sym.commonName})</span>}
+                            <span className="text-[#006c49] font-bold"> N={sym.count}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1505,6 +1680,95 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
                   placeholder="Comportamiento observado (ej. Forrajeo nocturno, percha a 2m, en amplexo...)"
                   className="px-2.5 py-1.5 rounded bg-white border border-[#c1c8c3] text-xs text-[#191c19]"
                 />
+
+                {/* Especies simpátricas en este avistamiento (Opcional) */}
+                <div className="p-2.5 rounded-lg bg-white border border-[#c1c8c3] flex flex-col gap-2">
+                  <div className="flex items-center justify-between flex-wrap gap-1">
+                    <span className="text-[10px] font-bold text-[#002217] uppercase flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px] text-[#006c49]">group_work</span>
+                      Especies simpátricas en este avistamiento (Opcional):
+                    </span>
+                    <span className="text-[10px] font-mono text-[#717974]">
+                      {newSightingSympatrics.length === 0 ? 'Dato omitido' : `${newSightingSympatrics.length} añadida(s)`}
+                    </span>
+                  </div>
+                  {newSightingSympatrics.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      {newSightingSympatrics.map((item, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center justify-between px-2 py-1 rounded bg-[#f8faf4] border border-[#e1e3dd] text-[11px]"
+                        >
+                          <span className="italic font-semibold text-[#002217]">
+                            {item.scientificName}{' '}
+                            {item.commonName && <span className="not-italic text-[#414844]">({item.commonName})</span>}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-[#006c49] font-bold">N={item.count}</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setNewSightingSympatrics(newSightingSympatrics.filter((_, idx) => idx !== i))
+                              }
+                              className="text-red-500 hover:text-red-700 cursor-pointer"
+                              title="Quitar de este avistamiento"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">close</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 pt-1">
+                    <input
+                      type="text"
+                      value={newSightSympSciName}
+                      onChange={(e) => setNewSightSympSciName(e.target.value)}
+                      placeholder="Nombre científico..."
+                      className="sm:col-span-5 px-2 py-1 rounded bg-[#f8faf4] border border-[#c1c8c3] text-[11px] italic text-[#191c19]"
+                    />
+                    <input
+                      type="text"
+                      value={newSightSympCommonName}
+                      onChange={(e) => setNewSightSympCommonName(e.target.value)}
+                      placeholder="Nombre común..."
+                      className="sm:col-span-5 px-2 py-1 rounded bg-[#f8faf4] border border-[#c1c8c3] text-[11px] text-[#191c19]"
+                    />
+                    <div className="sm:col-span-2 flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={1}
+                        value={newSightSympCount}
+                        onChange={(e) => setNewSightSympCount(Math.max(1, parseInt(e.target.value) || 1))}
+                        placeholder="N"
+                        title="Cantidad observada"
+                        className="w-12 px-1.5 py-1 rounded bg-[#f8faf4] border border-[#c1c8c3] text-[11px] font-mono text-center text-[#191c19]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!newSightSympSciName.trim() && !newSightSympCommonName.trim()) return;
+                          setNewSightingSympatrics([
+                            ...newSightingSympatrics,
+                            {
+                              scientificName: newSightSympSciName.trim() || newSightSympCommonName.trim(),
+                              commonName: newSightSympCommonName.trim() || newSightSympSciName.trim(),
+                              count: newSightSympCount > 0 ? newSightSympCount : 1,
+                            },
+                          ]);
+                          setNewSightSympSciName('');
+                          setNewSightSympCommonName('');
+                          setNewSightSympCount(1);
+                        }}
+                        className="px-2 py-1 rounded bg-[#006c49] text-white font-bold text-[11px] hover:bg-[#005236] cursor-pointer shadow-2xs"
+                        title="Agregar especie a este avistamiento"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <div className="flex items-center justify-between gap-2">
                   <input
                     type="text"

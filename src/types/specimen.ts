@@ -59,7 +59,7 @@ export const TAXON_GROUPS_REGISTRY: TaxonGroupMeta[] = [
     label: 'Ave (Aves)',
     shortLabel: 'Aves',
     scientific: 'Aves',
-    icon: 'cruelty_free',
+    icon: 'flutter_dash',
     color: '#0284c7',
     bgLight: '#e0f2fe',
     border: '#38bdf8',
@@ -297,7 +297,7 @@ export interface Morphometrics {
   courtshipAndMating?: string; // Cortejo, rituales nupciales y selección sexual
   interspecificRelations?: string; // Relaciones intra/interespecíficas, territorialidad, depredación, defensas/toxinas
   confirmedScientificData?: string; // Datos de investigación científica confirmada (UCR/OET/SINAC/literatura)
-  sympatricSpecies: SympatricSpecies[];
+  sympatricSpecies?: SympatricSpecies[]; // Opcional / Puede omitirse
 }
 
 export interface BioacousticRecord {
@@ -338,6 +338,7 @@ export interface SightingEntry {
   behaviorObserved: string;
   photoUrls?: string[];
   notes?: string;
+  sympatricSpecies?: SympatricSpecies[]; // Especies simpátricas observadas manualmente en este avistamiento (opcional)
   isCuriousFinding?: boolean;
   curiousFindingTitle?: string;
   curiousFindingDescription?: string;

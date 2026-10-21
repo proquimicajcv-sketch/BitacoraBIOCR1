@@ -49,7 +49,7 @@ export const TAXON_CATEGORIES: TaxonCategoryMeta[] = [
     scientificSubtitle: 'Aves',
     fullLabel: 'Ave (Aves)',
     description: 'Avifauna de dosel, sotobosque, humedales y costas (trogones, tucanes, colibríes, tangaras).',
-    icon: 'cruelty_free',
+    icon: 'flutter_dash',
     color: '#0284c7', // Azul cielo
     bgLight: '#e0f2fe',
     border: '#0369a1',
