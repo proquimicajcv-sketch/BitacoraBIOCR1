@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { SpecimenRecord, TaxonGroup } from '../types/specimen';
+import { SpecimenRecord, TaxonGroup, TAXON_GROUPS_REGISTRY, getTaxonMeta, TaxonCategorySection } from '../types/specimen';
 import { TaxonDonutChart, TaxonDonutItem } from './charts/TaxonDonutChart';
 import { TopographicElevationHistogram } from './charts/TopographicElevationHistogram';
 import { ExecutiveSinacReportModal } from './ExecutiveSinacReportModal';
@@ -23,6 +23,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
 }) => {
   const { isDarkMode } = useTheme();
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('ALL');
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>('ALL');
   const [searchTableQuery, setSearchTableQuery] = useState('');
   const [sortBy, setSortBy] = useState<'individuals' | 'sightings' | 'name'>('individuals');
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -33,14 +34,11 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
     let totalSightings = 0;
 
     const groupCounts: Record<string, { speciesCount: number; individualsCount: number; sightingsCount: number }> = {
-      Mammalia: { speciesCount: 0, individualsCount: 0, sightingsCount: 0 },
-      Amphibia: { speciesCount: 0, individualsCount: 0, sightingsCount: 0 },
-      Reptilia: { speciesCount: 0, individualsCount: 0, sightingsCount: 0 },
-      Plantae: { speciesCount: 0, individualsCount: 0, sightingsCount: 0 },
-      Aves: { speciesCount: 0, individualsCount: 0, sightingsCount: 0 },
-      Insecta: { speciesCount: 0, individualsCount: 0, sightingsCount: 0 },
       Otros: { speciesCount: 0, individualsCount: 0, sightingsCount: 0 },
     };
+    TAXON_GROUPS_REGISTRY.forEach((g) => {
+      groupCounts[g.key] = { speciesCount: 0, individualsCount: 0, sightingsCount: 0 };
+    });
 
     const lifeZoneCounts: Record<string, number> = {};
     const iucnCounts: Record<string, number> = {};
@@ -113,63 +111,22 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
     };
   }, [specimens]);
 
-  // Taxon group definitions with color schemes & high contrast text (WCAG compliant)
-  const taxonGroupsMeta = [
-    {
-      key: 'Mammalia',
-      label: 'Mamíferos',
-      icon: 'pets',
-      color: '#d97706',
-      bgLight: isDarkMode ? '#451a03' : '#fef3c7',
-      border: isDarkMode ? '#92400e' : '#f59e0b',
-      textContrast: isDarkMode ? '#fde68a' : '#78350f',
-    },
-    {
-      key: 'Amphibia',
-      label: 'Anfibios',
-      icon: 'flutter_dash',
-      color: '#10b981',
-      bgLight: isDarkMode ? '#064e3b' : '#d1fae5',
-      border: isDarkMode ? '#059669' : '#a7f3d0',
-      textContrast: isDarkMode ? '#a7f3d0' : '#064e3b',
-    },
-    {
-      key: 'Reptilia',
-      label: 'Reptiles',
-      icon: 'pest_control',
-      color: '#e11d48',
-      bgLight: isDarkMode ? '#4c0519' : '#ffe4e6',
-      border: isDarkMode ? '#be123c' : '#fecdd3',
-      textContrast: isDarkMode ? '#fecdd3' : '#881337',
-    },
-    {
-      key: 'Aves',
-      label: 'Aves',
-      icon: 'cruelty_free',
-      color: '#0284c7',
-      bgLight: isDarkMode ? '#082f49' : '#e0f2fe',
-      border: isDarkMode ? '#0369a1' : '#bae6fd',
-      textContrast: isDarkMode ? '#bae6fd' : '#075985',
-    },
-    {
-      key: 'Plantae',
-      label: 'Plantas / Flora',
-      icon: 'local_florist',
-      color: '#16a34a',
-      bgLight: isDarkMode ? '#052e16' : '#dcfce7',
-      border: isDarkMode ? '#15803d' : '#bbf7d0',
-      textContrast: isDarkMode ? '#bbf7d0' : '#14532d',
-    },
-    {
-      key: 'Insecta',
-      label: 'Insectos / Artrópodos',
-      icon: 'bug_report',
-      color: '#8b5cf6',
-      bgLight: isDarkMode ? '#2e1065' : '#ede9fe',
-      border: isDarkMode ? '#7c3aed' : '#ddd6fe',
-      textContrast: isDarkMode ? '#ddd6fe' : '#5b21b6',
-    },
-  ];
+  // Taxon group definitions dynamically adapted from TAXON_GROUPS_REGISTRY
+  const taxonGroupsMeta = useMemo(() => {
+    return TAXON_GROUPS_REGISTRY.map((g) => ({
+      key: g.key,
+      category: g.category,
+      label: g.shortLabel,
+      fullLabel: g.label,
+      scientific: g.scientific,
+      subdescription: g.subdescription,
+      icon: g.icon,
+      color: g.color,
+      bgLight: isDarkMode ? g.bgDark : g.bgLight,
+      border: isDarkMode ? g.borderDark : g.border,
+      textContrast: isDarkMode ? g.textDark : g.textContrast,
+    }));
+  }, [isDarkMode]);
 
   const donutData: TaxonDonutItem[] = taxonGroupsMeta.map((g) => ({
     key: g.key,
@@ -403,7 +360,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
             </div>
           </div>
 
-          {/* Card 6: Conteo Aves & Mamíferos */}
+          {/* Card 6: Conteo Vertebrados */}
           <div className="p-3.5 rounded-2xl bg-white border border-[#c1c8c3]/70 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold text-[#414844]">Vertebrados</span>
@@ -414,23 +371,24 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
                 {(stats.groupCounts['Amphibia']?.speciesCount || 0) +
                   (stats.groupCounts['Reptilia']?.speciesCount || 0) +
                   (stats.groupCounts['Aves']?.speciesCount || 0) +
-                  (stats.groupCounts['Mammalia']?.speciesCount || 0)}
+                  (stats.groupCounts['Mammalia']?.speciesCount || 0) +
+                  (stats.groupCounts['Actinopterygii']?.speciesCount || 0)}
               </span>
               <span className="block text-[10px] text-[#717974]">Fauna mayor registrada</span>
             </div>
           </div>
         </section>
 
-        {/* Section: Conteo Desglosado por Taxón (Requerimiento explícito: Mamíferos, Anfibios, Reptiles, Plantas, Aves, etc.) */}
+        {/* Section: Conteo Desglosado por Grupo Taxonómico (Costa Rica) */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
               <h3 className="font-bold text-base text-[#002217] flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#006c49]">category</span>
-                Conteo por Grupo Taxonómico (Mamíferos, Anfibios, Reptiles, Plantas, Aves, Insectos)
+                Conteo por Grupo Taxonómico (BioBitácora CR)
               </h3>
               <p className="text-xs text-[#717974]">
-                Haz clic en cualquier grupo para filtrar automáticamente la tabla de control inferior
+                Vertebrados, Invertebrados &amp; Hongos, y Flora (separación de Orquídeas, Árboles, Arbustos y Helechos)
               </p>
             </div>
             {selectedGroupFilter !== 'ALL' && (
@@ -444,73 +402,105 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {taxonGroupsMeta.map((group) => {
-              const data = stats.groupCounts[group.key] || { speciesCount: 0, individualsCount: 0, sightingsCount: 0 };
-              const percentage = stats.totalSpecies > 0 ? ((data.speciesCount / stats.totalSpecies) * 100).toFixed(1) : '0';
-              const isSelected = selectedGroupFilter === group.key;
+          {/* Filtro de Categoría: Todos, Vertebrados, Invertebrados y Hongos, Flora */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            {[
+              { id: 'ALL', label: 'Todos los Reinos', icon: 'apps' },
+              { id: 'Vertebrados', label: 'Vertebrados', icon: 'pets' },
+              { id: 'Invertebrados y Hongos', label: 'Invertebrados & Hongos', icon: 'bug_report' },
+              { id: 'Flora (Plantas)', label: 'Flora (Plantas)', icon: 'local_florist' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setSelectedCategoryTab(tab.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                  selectedCategoryTab === tab.id
+                    ? 'bg-[#002217] text-[#6cf8bb] shadow-sm'
+                    : 'bg-white text-[#414844] border border-[#c1c8c3]/60 hover:bg-[#edefe9]'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[15px]">{tab.icon}</span>
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
 
-              return (
-                <div
-                  key={group.key}
-                  onClick={() => setSelectedGroupFilter(isSelected ? 'ALL' : group.key)}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 shadow-sm hover:shadow-md ${
-                    isSelected
-                      ? 'bg-white ring-2 ring-[#006c49] border-[#006c49]'
-                      : 'bg-white border-[#c1c8c3]/70 hover:border-[#006c49]/40'
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm"
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {taxonGroupsMeta
+              .filter((group) => selectedCategoryTab === 'ALL' || group.category === selectedCategoryTab)
+              .map((group) => {
+                const data = stats.groupCounts[group.key] || { speciesCount: 0, individualsCount: 0, sightingsCount: 0 };
+                const percentage = stats.totalSpecies > 0 ? ((data.speciesCount / stats.totalSpecies) * 100).toFixed(1) : '0';
+                const isSelected = selectedGroupFilter === group.key;
+
+                return (
+                  <div
+                    key={group.key}
+                    onClick={() => setSelectedGroupFilter(isSelected ? 'ALL' : group.key)}
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-2.5 shadow-sm hover:shadow-md ${
+                      isSelected
+                        ? 'bg-white ring-2 ring-[#006c49] border-[#006c49]'
+                        : 'bg-white border-[#c1c8c3]/70 hover:border-[#006c49]/40'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm shrink-0"
+                          style={{ backgroundColor: group.bgLight, color: group.color }}
+                        >
+                          <span className="material-symbols-outlined text-[22px]">{group.icon}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-sm text-[#002217] truncate">{group.fullLabel}</h4>
+                          <span className="text-[10px] text-[#717974] font-mono block truncate">{group.scientific}</span>
+                        </div>
+                      </div>
+
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[11px] font-bold font-mono shrink-0"
                         style={{ backgroundColor: group.bgLight, color: group.color }}
                       >
-                        <span className="material-symbols-outlined text-[22px]">{group.icon}</span>
+                        {percentage}%
+                      </span>
+                    </div>
+
+                    {group.subdescription && (
+                      <p className="text-[10px] text-[#717974] italic flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[12px] text-[#006c49]">info</span>
+                        <span>{group.subdescription}</span>
+                      </p>
+                    )}
+
+                    {/* Quantitative numbers */}
+                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#f0f2ec] text-center">
+                      <div>
+                        <span className="text-[10px] text-[#717974] block">Especies</span>
+                        <strong className="text-base font-extrabold text-[#002217]">{data.speciesCount}</strong>
                       </div>
                       <div>
-                        <h4 className="font-bold text-sm text-[#002217]">{group.label}</h4>
-                        <span className="text-[10px] text-[#717974] font-mono">{group.key}</span>
+                        <span className="text-[10px] text-[#717974] block">Individuos</span>
+                        <strong className="text-base font-extrabold text-[#002217]">{data.individualsCount}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-[#717974] block">Avistamientos</span>
+                        <strong className="text-base font-extrabold text-[#002217]">{data.sightingsCount}</strong>
                       </div>
                     </div>
 
-                    <span
-                      className="px-2 py-0.5 rounded-full text-[11px] font-bold font-mono"
-                      style={{ backgroundColor: group.bgLight, color: group.color }}
-                    >
-                      {percentage}%
-                    </span>
-                  </div>
-
-                  {/* Quantitative numbers */}
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#f0f2ec] text-center">
-                    <div>
-                      <span className="text-[10px] text-[#717974] block">Especies</span>
-                      <strong className="text-base font-extrabold text-[#002217]">{data.speciesCount}</strong>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-[#717974] block">Individuos</span>
-                      <strong className="text-base font-extrabold text-[#002217]">{data.individualsCount}</strong>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-[#717974] block">Avistamientos</span>
-                      <strong className="text-base font-extrabold text-[#002217]">{data.sightingsCount}</strong>
+                    {/* Visual Progress Bar */}
+                    <div className="w-full bg-[#f0f2ec] rounded-full h-2 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.max(Number(percentage), 3)}%`,
+                          backgroundColor: group.color,
+                        }}
+                      />
                     </div>
                   </div>
-
-                  {/* Visual Progress Bar */}
-                  <div className="w-full bg-[#f0f2ec] rounded-full h-2 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${Math.max(Number(percentage), 3)}%`,
-                        backgroundColor: group.color,
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         </section>
 

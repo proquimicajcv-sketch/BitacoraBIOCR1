@@ -1,6 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import { SpecimenRecord, TaxonGroup, BioacousticRecord, PhotoRecord, SightingEntry } from '../types/specimen';
+import {
+  SpecimenRecord,
+  TaxonGroup,
+  BioacousticRecord,
+  PhotoRecord,
+  SightingEntry,
+  TAXON_GROUPS_REGISTRY,
+  getTaxonMeta,
+} from '../types/specimen';
 import { CostaRicaMap } from './CostaRicaMap';
 import {
   COSTA_RICA_HOTSPOTS,
@@ -1096,21 +1104,44 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-[#191c19] mb-1">
-                Grupo Taxonómico
+              <label className="block text-xs font-bold text-[#191c19] mb-1 flex items-center justify-between">
+                <span>Grupo Taxonómico</span>
+                <span className="text-[10px] text-[#006c49] font-mono font-bold flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[13px]">{getTaxonMeta(taxonGroup).icon}</span>
+                  {getTaxonMeta(taxonGroup).shortLabel}
+                </span>
               </label>
               <select
                 value={taxonGroup}
                 onChange={(e) => setTaxonGroup(e.target.value as TaxonGroup)}
-                className="w-full px-3 py-2 rounded-lg bg-white border border-[#c1c8c3] text-sm text-[#191c19]"
+                className="w-full px-3 py-2 rounded-lg bg-white border border-[#c1c8c3] text-xs font-semibold text-[#191c19] focus:ring-2 focus:ring-[#006c49]"
               >
-                <option value="Amphibia">Anfibio (Amphibia)</option>
-                <option value="Aves">Ave (Aves)</option>
-                <option value="Mammalia">Mamífero (Mammalia)</option>
-                <option value="Insecta">Insecto / Artrópodo (Insecta)</option>
-                <option value="Reptilia">Reptil (Reptilia)</option>
-                <option value="Plantae">Flora (Plantae)</option>
+                <optgroup label="Vertebrados">
+                  <option value="Mammalia">Mamífero (Mammalia)</option>
+                  <option value="Aves">Ave (Aves)</option>
+                  <option value="Reptilia">Reptil (Reptilia)</option>
+                  <option value="Amphibia">Anfibio (Amphibia)</option>
+                  <option value="Actinopterygii">Pez (Actinopterygii / Chondrichthyes) — Ríos, quebradas y zonas costeras</option>
+                </optgroup>
+                <optgroup label="Invertebrados y Hongos">
+                  <option value="Insecta">Insecto / Artrópodo (Insecta, Arachnida, Crustacea, etc.)</option>
+                  <option value="Mollusca">Molusco y Otro Invertebrado (Gastropoda, Bivalvia, Annelida) — Caracoles, babosas, lombrices</option>
+                  <option value="Fungi">Hongo y Liquen (Fungi / Lichenes) — Hongos macroscópicos y líquenes</option>
+                </optgroup>
+                <optgroup label="Flora (Plantas)">
+                  <option value="Orchidaceae">Orquídea (Orchidaceae) — Categoría independiente y prioritaria</option>
+                  <option value="Arboles">Árbol (Magnoliopsida / Pinopsida / Liliopsida leñosas) — Forestales</option>
+                  <option value="Arbustos_Herbaceas">Arbusto y Herbácea (Plantae vasculares) — Sotobosque y hierbas</option>
+                  <option value="Pteridophyta">Helecho y Afines (Pteridophyta / Bryophyta) — Helechos y musgos</option>
+                  <option value="Plantae">Flora General (Plantae)</option>
+                </optgroup>
               </select>
+              {getTaxonMeta(taxonGroup).subdescription && (
+                <p className="text-[10px] text-[#717974] mt-1 italic flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[12px] text-[#006c49]">info</span>
+                  <span>{getTaxonMeta(taxonGroup).subdescription}</span>
+                </p>
+              )}
             </div>
           </div>
 

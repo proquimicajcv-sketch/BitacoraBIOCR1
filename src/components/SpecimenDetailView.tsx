@@ -7,6 +7,7 @@ import {
   VitalityCause,
   LifeStage,
   BiologicalSex,
+  getTaxonMeta,
 } from '../types/specimen';
 import {
   playFrogCall,
@@ -747,9 +748,27 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
         <section className="px-4 pt-4">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#c1ecd7] text-[#002116] font-mono text-[11px] font-bold uppercase">
-                {specimen.taxonGroup} • {specimen.realm}
-              </span>
+              {(() => {
+                const meta = getTaxonMeta(specimen.taxonGroup);
+                return (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-mono text-[11px] font-bold shadow-xs border"
+                    style={{
+                      backgroundColor: meta.bgLight,
+                      color: meta.textContrast,
+                      borderColor: meta.border,
+                    }}
+                    title={`${meta.label}: ${meta.scientific}${meta.subdescription ? ' - ' + meta.subdescription : ''}`}
+                  >
+                    <span className="material-symbols-outlined text-[15px]" style={{ color: meta.color }}>
+                      {meta.icon}
+                    </span>
+                    <span>{meta.label}</span>
+                    <span className="opacity-40">•</span>
+                    <span className="text-[10px] font-semibold opacity-90">{meta.category}</span>
+                  </span>
+                );
+              })()}
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#e7e9e3] text-[#414844] font-mono text-[11px] font-medium">
                 <span className="material-symbols-outlined text-[14px] text-[#006c49]">cloud_done</span>
                 Darwin Core Sync

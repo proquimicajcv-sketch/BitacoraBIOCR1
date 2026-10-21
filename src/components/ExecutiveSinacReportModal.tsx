@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SpecimenRecord } from '../types/specimen';
+import { SpecimenRecord, getTaxonMeta } from '../types/specimen';
 import { exportDarwinCoreCsv } from '../utils/darwinCoreExport';
 
 interface ExecutiveSinacReportModalProps {
@@ -182,7 +182,7 @@ export const ExecutiveSinacReportModal: React.FC<ExecutiveSinacReportModalProps>
                         </td>
                         <td className="p-2.5">
                           <strong className="italic text-[#002217] block">{spec.scientificName}</strong>
-                          <span className="text-[10px] text-[#717974]">{spec.commonName} • [{spec.taxonGroup}]</span>
+                          <span className="text-[10px] text-[#717974]">{spec.commonName} • [{getTaxonMeta(spec.taxonGroup).shortLabel}]</span>
                         </td>
                         <td className="p-2.5 text-[11px]">
                           <span className="block font-medium">{spec.georeference.locality}</span>

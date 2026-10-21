@@ -41,12 +41,25 @@ Tu tarea:
 2. Si el usuario dio solo el nombre científico (ej. "Agalychnis callidryas", "Pharomachrus mocinno"), determina su nombre común en español utilizado en Costa Rica y en inglés.
 3. Si dio ambos, valida la taxonomía y completa todos los detalles morfológicos, etológicos y reproductivos.
 4. Genera datos exhaustivos y fidedignos confirmados en investigaciones de campo en Costa Rica (UCR / OET La Selva, Monteverde, Sirena, Palo Verde, etc.).
+5. Para el campo "taxonGroup" utiliza ESTRICTAMENTE una de estas opciones según corresponda:
+   - "Mammalia" (Mamíferos)
+   - "Aves" (Aves)
+   - "Reptilia" (Reptiles)
+   - "Amphibia" (Anfibios)
+   - "Actinopterygii" (Peces de agua dulce o marinos)
+   - "Insecta" (Insectos, arácnidos, crustáceos y artrópodos)
+   - "Mollusca" (Moluscos, gasterópodos, caracoles, babosas, bivalvos, anélidos)
+   - "Fungi" (Hongos macroscópicos y líquenes)
+   - "Orchidaceae" (Orquídeas, categoría prioritaria e independiente)
+   - "Arboles" (Árboles forestales leñosos de gran porte)
+   - "Arbustos_Herbaceas" (Arbustos, hierbas y plantas vasculares de sotobosque)
+   - "Pteridophyta" (Helechos, licopodios, musgos y hepáticas)
 
 Responde ÚNICAMENTE con un JSON válido con la siguiente estructura:
 {
   "scientificName": "Género epíteto",
   "commonName": "Nombre común en Costa Rica / Nombre en inglés",
-  "taxonGroup": "Amphibia" | "Aves" | "Mammalia" | "Insecta" | "Reptilia" | "Plantae",
+  "taxonGroup": "Mammalia" | "Aves" | "Reptilia" | "Amphibia" | "Actinopterygii" | "Insecta" | "Mollusca" | "Fungi" | "Orchidaceae" | "Arboles" | "Arbustos_Herbaceas" | "Pteridophyta",
   "taxonomy": {
     "kingdom": "Animalia" o "Plantae",
     "phylum": "Chordata",

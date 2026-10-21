@@ -1,5 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { SpecimenRecord } from '../types/specimen';
+import {
+  SpecimenRecord,
+  TaxonGroup,
+  TAXON_GROUPS_REGISTRY,
+  getTaxonMeta,
+  TaxonCategorySection,
+} from '../types/specimen';
 import { ThemeSwitcher } from './ThemeSwitcher';
 import { handleImageOfflineFallback } from '../utils/offlineImageCache';
 
@@ -28,22 +34,22 @@ export const SpecimenCatalogView: React.FC<SpecimenCatalogViewProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
+  const [selectedSection, setSelectedSection] = useState<string>('ALL');
 
-  // Quick stats calculation
+  // Quick stats calculation for all registered taxonomic groups
   const groupStats = useMemo(() => {
     let totalSightings = 0;
     let totalIndividuals = 0;
-    const counts: Record<string, { species: number; individuals: number; sightings: number }> = {
-      Mammalia: { species: 0, individuals: 0, sightings: 0 },
-      Amphibia: { species: 0, individuals: 0, sightings: 0 },
-      Reptilia: { species: 0, individuals: 0, sightings: 0 },
-      Plantae: { species: 0, individuals: 0, sightings: 0 },
-      Aves: { species: 0, individuals: 0, sightings: 0 },
-      Insecta: { species: 0, individuals: 0, sightings: 0 },
-    };
+    const counts: Record<string, { species: number; individuals: number; sightings: number }> = {};
+
+    TAXON_GROUPS_REGISTRY.forEach((g) => {
+      counts[g.key] = { species: 0, individuals: 0, sightings: 0 };
+    });
 
     specimens.forEach((spec) => {
-      const g = counts[spec.taxonGroup] ? spec.taxonGroup : null;
+      if (!counts[spec.taxonGroup]) {
+        counts[spec.taxonGroup] = { species: 0, individuals: 0, sightings: 0 };
+      }
       const sList = spec.sightings || [];
       const sCount = sList.length;
       let indCount = 0;
@@ -56,34 +62,49 @@ export const SpecimenCatalogView: React.FC<SpecimenCatalogViewProps> = ({
       totalSightings += sCount;
       totalIndividuals += indCount;
 
-      if (g) {
-        counts[g].species += 1;
-        counts[g].individuals += indCount;
-        counts[g].sightings += sCount;
-      }
+      counts[spec.taxonGroup].species += 1;
+      counts[spec.taxonGroup].individuals += indCount;
+      counts[spec.taxonGroup].sightings += sCount;
     });
 
     return { counts, totalSightings, totalIndividuals };
   }, [specimens]);
 
-  const filtered = specimens.filter((spec) => {
-    const matchesGroup = selectedGroup === 'ALL' || spec.taxonGroup === selectedGroup;
-    const query = searchQuery.toLowerCase();
-    const matchesSearch =
-      spec.scientificName.toLowerCase().includes(query) ||
-      spec.commonName.toLowerCase().includes(query) ||
-      spec.catalogNumber.toLowerCase().includes(query) ||
-      spec.georeference.locality.toLowerCase().includes(query);
-    return matchesGroup && matchesSearch;
-  });
+  const filtered = useMemo(() => {
+    return specimens.filter((spec) => {
+      // Group filter
+      if (selectedGroup !== 'ALL' && spec.taxonGroup !== selectedGroup) {
+        return false;
+      }
+      // Section filter
+      if (selectedSection !== 'ALL') {
+        const meta = getTaxonMeta(spec.taxonGroup);
+        if (meta.category !== selectedSection) {
+          return false;
+        }
+      }
+      // Search query
+      const query = searchQuery.toLowerCase().trim();
+      if (!query) return true;
 
-  const taxonCardList = [
-    { id: 'Mammalia', label: 'Mamíferos', icon: 'pets', color: '#f59e0b', bg: '#fef3c7' },
-    { id: 'Amphibia', label: 'Anfibios', icon: 'flutter_dash', color: '#10b981', bg: '#d1fae5' },
-    { id: 'Reptilia', label: 'Reptiles', icon: 'pest_control', color: '#e11d48', bg: '#ffe4e6' },
-    { id: 'Plantae', label: 'Plantas', icon: 'local_florist', color: '#16a34a', bg: '#dcfce7' },
-    { id: 'Aves', label: 'Aves', icon: 'cruelty_free', color: '#0284c7', bg: '#e0f2fe' },
-    { id: 'Insecta', label: 'Insectos', icon: 'bug_report', color: '#8b5cf6', bg: '#ede9fe' },
+      const meta = getTaxonMeta(spec.taxonGroup);
+      return (
+        spec.scientificName.toLowerCase().includes(query) ||
+        spec.commonName.toLowerCase().includes(query) ||
+        spec.catalogNumber.toLowerCase().includes(query) ||
+        spec.georeference.locality.toLowerCase().includes(query) ||
+        meta.shortLabel.toLowerCase().includes(query) ||
+        meta.label.toLowerCase().includes(query) ||
+        meta.scientific.toLowerCase().includes(query)
+      );
+    });
+  }, [specimens, selectedGroup, selectedSection, searchQuery]);
+
+  const categoriesList: { id: string; label: string; icon: string }[] = [
+    { id: 'ALL', label: 'Todos los Reinos', icon: 'apps' },
+    { id: 'Vertebrados', label: 'Vertebrados', icon: 'pets' },
+    { id: 'Invertebrados y Hongos', label: 'Invertebrados & Hongos', icon: 'bug_report' },
+    { id: 'Flora (Plantas)', label: 'Flora (Plantas)', icon: 'local_florist' },
   ];
 
   return (
@@ -191,7 +212,7 @@ export const SpecimenCatalogView: React.FC<SpecimenCatalogViewProps> = ({
           </div>
         </div>
 
-        {/* ESPACIO DENTRO DE LA COLECCIÓN PARA CONTEO GENERAL, MAMÍFEROS, ANFIBIOS, REPTILES, PLANTAS, AVES, ETC. CON PEQUEÑAS GRÁFICAS */}
+        {/* ESPACIO DENTRO DE LA COLECCIÓN PARA CONTEO GENERAL Y AGRUPACIÓN TAXONÓMICA */}
         <div className="p-4 rounded-2xl bg-white border border-[#c1c8c3]/80 shadow-sm flex flex-col gap-3">
           <div className="flex items-center justify-between flex-wrap gap-2 border-b border-[#f0f2ec] pb-2.5">
             <div className="flex items-center gap-2">
@@ -201,7 +222,7 @@ export const SpecimenCatalogView: React.FC<SpecimenCatalogViewProps> = ({
                   Panel de Conteo de Biodiversidad en la Colección
                 </h3>
                 <span className="text-[11px] text-[#717974]">
-                  Conteo general: <strong>{specimens.length}</strong> especies registradas | <strong>{groupStats.totalSightings}</strong> avistamientos en campo | <strong>{groupStats.totalIndividuals}</strong> individuos en campo
+                  Conteo general: <strong>{specimens.length}</strong> especies registradas | <strong>{groupStats.totalSightings}</strong> avistamientos en campo | <strong>{groupStats.totalIndividuals}</strong> individuos
                 </span>
               </div>
             </div>
@@ -211,64 +232,103 @@ export const SpecimenCatalogView: React.FC<SpecimenCatalogViewProps> = ({
                 onClick={onOpenStatistics}
                 className="text-xs font-bold text-[#006c49] hover:underline flex items-center gap-1 cursor-pointer"
               >
-                <span>Ver estadísticas detalladas</span>
+                <span>Ver estadísticas y gráficas</span>
                 <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
               </button>
             )}
           </div>
 
-          {/* Mini Cards con Conteos y Pequeñas Gráficas de Barra */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-1">
-            {taxonCardList.map((tax) => {
-              const data = groupStats.counts[tax.id] || { species: 0, individuals: 0, sightings: 0 };
-              const pct = specimens.length > 0 ? (data.species / specimens.length) * 100 : 0;
-              const isSelected = selectedGroup === tax.id;
+          {/* Selector de Gran Categoría: Vertebrados, Invertebrados & Hongos, Flora */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar border-b border-[#f0f2ec]/80 pb-2">
+            {categoriesList.map((cat) => {
+              const isSelected = selectedSection === cat.id;
+              const countInCat = cat.id === 'ALL'
+                ? specimens.length
+                : specimens.filter((s) => getTaxonMeta(s.taxonGroup).category === cat.id).length;
 
               return (
                 <button
-                  key={tax.id}
-                  onClick={() => setSelectedGroup(isSelected ? 'ALL' : tax.id)}
-                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                  key={cat.id}
+                  onClick={() => {
+                    setSelectedSection(cat.id);
+                    // If the currently selected group doesn't belong to this section, reset group to ALL
+                    if (cat.id !== 'ALL' && selectedGroup !== 'ALL') {
+                      const meta = getTaxonMeta(selectedGroup);
+                      if (meta.category !== cat.id) {
+                        setSelectedGroup('ALL');
+                      }
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                     isSelected
-                      ? 'ring-2 ring-[#006c49] bg-white border-[#006c49]'
-                      : 'bg-[#fcfdfa] hover:bg-white border-[#e1e3dd] hover:border-[#006c49]/40'
+                      ? 'bg-[#002217] text-[#6cf8bb] shadow-sm'
+                      : 'bg-[#f4f6f0] text-[#414844] hover:bg-[#e7eae1]'
                   }`}
-                  title={`Filtrar por ${tax.label}`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="material-symbols-outlined text-[18px]" style={{ color: tax.color }}>
-                      {tax.icon}
-                    </span>
-                    <span
-                      className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold"
-                      style={{ backgroundColor: tax.bg, color: tax.color }}
-                    >
-                      {data.species}
-                    </span>
-                  </div>
-
-                  <div>
-                    <span className="text-[11px] font-bold text-[#002217] block leading-tight">
-                      {tax.label}
-                    </span>
-                    <span className="text-[10px] text-[#717974] block font-mono">
-                      {data.sightings} avist. • {data.individuals} inds.
-                    </span>
-                  </div>
-
-                  {/* Pequeña gráfica de barra de progreso */}
-                  <div className="w-full bg-[#f0f2ec] rounded-full h-1.5 overflow-hidden mt-0.5">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${Math.max(pct, data.species > 0 ? 10 : 0)}%`,
-                        backgroundColor: tax.color,
-                      }}
-                    />
-                  </div>
+                  <span className="material-symbols-outlined text-[15px]">{cat.icon}</span>
+                  <span>{cat.label}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${isSelected ? 'bg-[#6cf8bb]/20 text-[#6cf8bb]' : 'bg-[#e1e3dd] text-[#191c19]'}`}>
+                    {countInCat}
+                  </span>
                 </button>
               );
             })}
+          </div>
+
+          {/* Mini Cards con Conteos y Pequeñas Gráficas de Barra para cada Grupo Taxonómico */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 pt-1">
+            {TAXON_GROUPS_REGISTRY
+              .filter((tax) => selectedSection === 'ALL' || tax.category === selectedSection)
+              .map((tax) => {
+                const data = groupStats.counts[tax.key] || { species: 0, individuals: 0, sightings: 0 };
+                const pct = specimens.length > 0 ? (data.species / specimens.length) * 100 : 0;
+                const isSelected = selectedGroup === tax.key;
+
+                return (
+                  <button
+                    key={tax.key}
+                    onClick={() => setSelectedGroup(isSelected ? 'ALL' : tax.key)}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                      isSelected
+                        ? 'ring-2 ring-[#006c49] bg-white border-[#006c49] shadow-sm'
+                        : 'bg-[#fcfdfa] hover:bg-white border-[#e1e3dd] hover:border-[#006c49]/40'
+                    }`}
+                    title={`${tax.label}: ${tax.scientific}${tax.subdescription ? ' - ' + tax.subdescription : ''}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="material-symbols-outlined text-[19px]" style={{ color: tax.color }}>
+                        {tax.icon}
+                      </span>
+                      <span
+                        className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold"
+                        style={{ backgroundColor: tax.bgLight, color: tax.textContrast }}
+                      >
+                        {data.species}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] font-bold text-[#002217] block leading-tight truncate">
+                        {tax.shortLabel}
+                      </span>
+                      <span className="text-[10px] text-[#717974] block font-mono truncate">
+                        {data.sightings} avist. • {data.individuals} inds.
+                      </span>
+                    </div>
+
+                    {/* Barra de progreso visual */}
+                    <div className="w-full bg-[#f0f2ec] rounded-full h-1.5 overflow-hidden mt-0.5">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.max(pct, data.species > 0 ? 10 : 0)}%`,
+                          backgroundColor: tax.color,
+                        }}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
           </div>
         </div>
 
@@ -283,7 +343,7 @@ export const SpecimenCatalogView: React.FC<SpecimenCatalogViewProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por nombre científico, común, localidad o catálogo..."
+              placeholder="Buscar por especie, nombre común, orquídea, insecto, localidad..."
               className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white border border-[#c1c8c3] text-xs text-[#191c19] focus:outline-none focus:ring-2 focus:ring-[#006c49]"
             />
             {searchQuery && (
@@ -302,28 +362,35 @@ export const SpecimenCatalogView: React.FC<SpecimenCatalogViewProps> = ({
               onClick={() => setSelectedGroup('ALL')}
               className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 selectedGroup === 'ALL'
-                  ? 'bg-[#002217] text-white shadow-sm'
+                  ? 'bg-[#002217] text-[#6cf8bb] shadow-sm'
                   : 'bg-white text-[#414844] border border-[#c1c8c3]/60 hover:bg-[#edefe9]'
               }`}
             >
-              Todos ({specimens.length})
+              Todos ({filtered.length})
             </button>
-            {taxonCardList.map((tax) => {
-              const count = groupStats.counts[tax.id]?.species || 0;
-              return (
-                <button
-                  key={tax.id}
-                  onClick={() => setSelectedGroup(tax.id)}
-                  className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                    selectedGroup === tax.id
-                      ? 'bg-[#002217] text-white shadow-sm'
-                      : 'bg-white text-[#414844] border border-[#c1c8c3]/60 hover:bg-[#edefe9]'
-                  }`}
-                >
-                  {tax.label} ({count})
-                </button>
-              );
-            })}
+            {TAXON_GROUPS_REGISTRY
+              .filter((tax) => selectedSection === 'ALL' || tax.category === selectedSection)
+              .map((tax) => {
+                const count = groupStats.counts[tax.key]?.species || 0;
+                const isSelected = selectedGroup === tax.key;
+                return (
+                  <button
+                    key={tax.key}
+                    onClick={() => setSelectedGroup(isSelected ? 'ALL' : tax.key)}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 ${
+                      isSelected
+                        ? 'bg-[#002217] text-white shadow-sm'
+                        : 'bg-white text-[#414844] border border-[#c1c8c3]/60 hover:bg-[#edefe9]'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[14px]" style={{ color: tax.color }}>
+                      {tax.icon}
+                    </span>
+                    <span>{tax.shortLabel}</span>
+                    <span className="text-[10px] font-mono text-[#717974]">({count})</span>
+                  </button>
+                );
+              })}
           </div>
         </div>
 
@@ -331,6 +398,7 @@ export const SpecimenCatalogView: React.FC<SpecimenCatalogViewProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
           {filtered.map((specimen) => {
             const sightingsCount = specimen.sightings?.length || 0;
+            const meta = getTaxonMeta(specimen.taxonGroup);
             return (
               <div
                 key={specimen.id}
@@ -355,15 +423,20 @@ export const SpecimenCatalogView: React.FC<SpecimenCatalogViewProps> = ({
                   </span>
 
                   {/* Group & Sightings badges */}
-                  <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                  <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 flex-wrap justify-end">
                     {sightingsCount > 0 && (
                       <span className="bg-[#0284c7] text-white font-mono text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-0.5">
                         <span className="material-symbols-outlined text-[12px]">visibility</span>
                         <span>{sightingsCount} avist.</span>
                       </span>
                     )}
-                    <span className="bg-[#002217]/90 text-[#6cf8bb] font-mono text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
-                      {specimen.taxonGroup}
+                    <span
+                      className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 backdrop-blur-md border border-white/20"
+                      style={{ backgroundColor: `${meta.color}ee`, color: '#ffffff' }}
+                      title={`${meta.label}: ${meta.scientific}`}
+                    >
+                      <span className="material-symbols-outlined text-[12px]">{meta.icon}</span>
+                      <span>{meta.shortLabel}</span>
                     </span>
                   </div>
 

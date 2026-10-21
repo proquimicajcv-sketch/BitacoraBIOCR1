@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
-import { SpecimenRecord, TaxonGroup } from '../types/specimen';
+import { SpecimenRecord, TaxonGroup, TAXON_GROUPS_REGISTRY, getTaxonMeta } from '../types/specimen';
 import {
   COSTA_RICA_CENTER,
   COSTA_RICA_HOTSPOTS,
@@ -277,22 +277,12 @@ export const CostaRicaMap: React.FC<CostaRicaMapProps> = ({
     filtered.forEach((specimen) => {
       const { latitude, longitude } = specimen.georeference;
 
-      const getTaxonColor = (group: TaxonGroup) => {
-        switch (group) {
-          case 'Amphibia':
-            return { bg: '#006c49', border: '#6cf8bb', icon: 'pest_control' };
-          case 'Aves':
-            return { bg: '#0284c7', border: '#e0f2fe', icon: 'flutter' };
-          case 'Mammalia':
-            return { bg: '#b45309', border: '#ffedd5', icon: 'pets' };
-          case 'Insecta':
-            return { bg: '#7c3aed', border: '#ede9fe', icon: 'bug_report' };
-          default:
-            return { bg: '#0f382a', border: '#c1ecd7', icon: 'eco' };
-        }
+      const meta = getTaxonMeta(specimen.taxonGroup);
+      const style = {
+        bg: meta.color,
+        border: '#ffffff',
+        icon: meta.icon,
       };
-
-      const style = getTaxonColor(specimen.taxonGroup);
 
       const markerHtml = `
         <div style="
@@ -474,26 +464,38 @@ export const CostaRicaMap: React.FC<CostaRicaMapProps> = ({
         {/* Taxon Filters (only in global view mode) */}
         {!pickerMode && (
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pointer-events-auto no-scrollbar">
-            {[
-              { id: 'ALL', label: 'Todos', icon: 'grid_view' },
-              { id: 'Amphibia', label: 'Anfibios', icon: 'pest_control' },
-              { id: 'Aves', label: 'Aves', icon: 'flutter' },
-              { id: 'Mammalia', label: 'Mamíferos', icon: 'pets' },
-              { id: 'Insecta', label: 'Insectos', icon: 'bug_report' },
-            ].map((tax) => (
-              <button
-                key={tax.id}
-                onClick={() => setSelectedTaxon(tax.id)}
-                className={`px-2.5 py-1 rounded-full text-xs font-semibold shadow-md flex items-center gap-1 transition-all cursor-pointer whitespace-nowrap ${
-                  selectedTaxon === tax.id
-                    ? 'bg-[#002217] text-white border border-[#6cf8bb]/40'
-                    : 'bg-white/90 text-[#414844] hover:bg-white'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[15px]">{tax.icon}</span>
-                <span>{tax.label}</span>
-              </button>
-            ))}
+            <button
+              onClick={() => setSelectedTaxon('ALL')}
+              className={`px-2.5 py-1 rounded-full text-xs font-semibold shadow-md flex items-center gap-1 transition-all cursor-pointer whitespace-nowrap ${
+                selectedTaxon === 'ALL'
+                  ? 'bg-[#002217] text-[#6cf8bb] border border-[#6cf8bb]/40'
+                  : 'bg-white/95 text-[#414844] hover:bg-white'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[15px]">grid_view</span>
+              <span>Todos ({specimens.length})</span>
+            </button>
+            {TAXON_GROUPS_REGISTRY.map((tax) => {
+              const count = specimens.filter((s) => s.taxonGroup === tax.key).length;
+              const isSelected = selectedTaxon === tax.key;
+              return (
+                <button
+                  key={tax.key}
+                  onClick={() => setSelectedTaxon(tax.key)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold shadow-md flex items-center gap-1 transition-all cursor-pointer whitespace-nowrap ${
+                    isSelected
+                      ? 'bg-[#002217] text-white border border-[#6cf8bb]/40'
+                      : 'bg-white/95 text-[#414844] hover:bg-white'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[15px]" style={{ color: tax.color }}>
+                    {tax.icon}
+                  </span>
+                  <span>{tax.shortLabel}</span>
+                  <span className="text-[10px] font-mono opacity-80">({count})</span>
+                </button>
+              );
+            })}
           </div>
         )}
 

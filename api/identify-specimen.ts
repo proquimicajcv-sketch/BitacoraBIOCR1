@@ -73,6 +73,9 @@ Tu tarea es:
 10. Sugerir la zona de vida de Holdridge en Costa Rica (bmh-T, bp-PM, bs-T, etc.), microhábitat y elevación promedio.
 11. Atributos bioacústicos típicos si aplica.
 12. Dar puntaje de confianza (0.0 a 1.0) y explicación diagnóstica.
+13. El campo taxonGroup DEBE ser estrictamente uno de los grupos taxonómicos oficiales de BioBitácora Costa Rica:
+    "Mammalia" | "Aves" | "Reptilia" | "Amphibia" | "Actinopterygii" | "Insecta" | "Mollusca" | "Fungi" | "Orchidaceae" | "Arboles" | "Arbustos_Herbaceas" | "Pteridophyta"
+    (Para orquídeas, usar prioritariamente "Orchidaceae"; para árboles forestales/maderables, "Arboles"; para arbustos/hierbas de sotobosque, "Arbustos_Herbaceas"; para helechos y musgos, "Pteridophyta"; para peces, "Actinopterygii"; para caracoles/moluscos, "Mollusca"; para hongos y líquenes, "Fungi").
 
 Responde ÚNICAMENTE con un objeto JSON válido con la estructura solicitada conteniendo:
 scientificName, commonName, taxonGroup, realm, taxonomy, iucnStatus, citesStatus, morphometrics (snoutVentLengthMm, colorationAndAnatomy, ethologyAndReproduction, courtshipAndMating, interspecificRelations, confirmedScientificData, sympatricSpecies), suggestedHabitat (lifeZone, microhabitat, elevationMeters), bioacoustics, confidenceScore, identificationRationale.
