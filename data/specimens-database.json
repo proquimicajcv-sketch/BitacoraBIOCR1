@@ -176,5 +176,103 @@
         "notes": "Confirmación en campo de Isthmohyla nacientes en naciente protegida dentro de finca con café bajo sombra."
       }
     ]
+  },
+  {
+    "id": "cr-bio-2026-2468",
+    "catalogNumber": "CAT. CR-BIO-2026-2468",
+    "scientificName": "Bolitoglossa colonnea",
+    "commonName": "Salamandra",
+    "taxonGroup": "Amphibia",
+    "realm": "Neotropical",
+    "collector": "Ing. Carvajal V.",
+    "collectionDate": "14 Octubre 2026",
+    "collectionTime": "19:30 CST",
+    "institutionCode": "UCR-MZ",
+    "curationStatus": "Verificada",
+    "darwinCoreSync": true,
+    "fieldFolio": "Ficha Folio #42-Tapantí",
+    "iucnStatus": {
+      "code": "LC",
+      "label": "Preocupación Menor",
+      "trend": "Población Estable"
+    },
+    "citesStatus": {
+      "appendix": "Apéndice II / No incluida",
+      "distribution": "Nativa de Costa Rica y Panamá"
+    },
+    "taxonomy": {
+      "kingdom": "Animalia",
+      "phylum": "Chordata",
+      "class": "Amphibia",
+      "order": "Caudata",
+      "family": "Plethodontidae",
+      "genus": "Bolitoglossa",
+      "species": "colonnea",
+      "taxonId": "61899"
+    },
+    "heroImage": "/bolitoglossa_colonnea.jpg",
+    "heroImageDescription": "Ejemplar en vida de Bolitoglossa colonnea (Salamandra de cresta interocular) registrado sobre follaje en el Parque Nacional Tapantí - Macizo de la Muerte.",
+    "georeference": {
+      "latitude": 9.7584,
+      "longitude": -83.7842,
+      "latitudeDMS": "9°45'30.2\" N",
+      "longitudeDMS": "83°47'03.1\" W",
+      "datum": "WGS84",
+      "accuracyMeters": 3.5,
+      "elevationMeters": 1600,
+      "locality": "Parque Nacional Tapantí - Macizo de la Muerte",
+      "province": "Cartago, Costa Rica",
+      "conservationArea": "Área de Conservación La Amistad Pacífico (ACLAP) / Cordillera de Talamanca",
+      "lifeZone": "Bosque Muy Húmedo Montano Bajo (bmh-MB)",
+      "microhabitat": "Hojarasca húmeda, estrato arbustivo bajo y bromelias epífitas en selva nubosa"
+    },
+    "morphometrics": {
+      "snoutVentLengthMm": 46.5,
+      "colorationAndAnatomy": "Salamandra de porte mediano caracterizada por una cresta dérmica transversal interocular distintiva entre los ojos. Coloración dorsal canela a marrón anaranjado con tonos salmón en actividad nocturna. Extremidades robustas con dígitos extensamente palmeados formando almohadillas adaptadas al desplazamiento sobre follaje resbaladizo.",
+      "ethologyAndReproduction": "Especie nocturna y predominantemente arborícola. Durante el día se refugia en axilas de bromelias, hojarasca húmeda o bajo cortezas musgosas. Caza pequeños artrópodos y colémbolos en hojas bajas tras el atardecer.",
+      "courtshipAndMating": "Cortejo terrestre característico de plethodóntidos con marcha nupcial (\"straddle walk\") guiada por feromonas de la glándula mentoniana del macho. Fecundación interna mediante espermatóforo y desarrollo directo sin fase larval acuática.",
+      "interspecificRelations": "Simpátrica con otras salamandras montanas de Talamanca como Bolitoglossa pesrubra y Bolitoglossa gracilis. Depredada por aves de sotobosque y serpientes del género Rhadinaea.",
+      "confirmedScientificData": "Registrada en inventarios herpetológicos de las vertientes de la Cordillera de Talamanca y Tapantí por la Universidad de Costa Rica (UCR) y el INBio. Especie bioindicadora de humedad edáfica y cobertura boscosa continua.",
+      "sympatricSpecies": [
+        {
+          "scientificName": "Bolitoglossa pesrubra",
+          "commonName": "Salamandra de patas rojas",
+          "count": 2
+        },
+        {
+          "scientificName": "Craugastor podiciferus",
+          "commonName": "Ranita de hojarasca",
+          "count": 3
+        }
+      ]
+    },
+    "additionalPhotos": [
+      {
+        "id": "photo-b1",
+        "url": "/bolitoglossa_colonnea.jpg",
+        "label": "Ejemplar en Tapantí",
+        "description": "Fotografía en vida de Bolitoglossa colonnea sobre hoja ancha en Parque Nacional Tapantí."
+      }
+    ],
+    "sightings": [
+      {
+        "id": "sight-tapanti-20261014",
+        "timestamp": "14 Oct 2026, 19:30 CST",
+        "date": "2026-10-14",
+        "observer": "Ing. Carvajal V.",
+        "locality": "Parque Nacional Tapantí - Macizo de la Muerte",
+        "coordinates": "9°45'30.2\" N, 83°47'03.1\" W",
+        "count": 1,
+        "individualsCount": 1,
+        "microhabitat": "Follaje húmedo a 60 cm del suelo en sendero ripario",
+        "weather": "Noche nubosa con llovizna suave, 15.4°C",
+        "temperatureC": 15.4,
+        "behaviorObserved": "Individuo activo desplazándose sobre el haz de una hoja ancha de arácea.",
+        "notes": "Registro fotográfico en vida sin colecta destructiva.",
+        "vitalityStatus": "VIVO",
+        "lifeStage": "ADULTO",
+        "sex": "NO_APLICA"
+      }
+    ]
   }
 ]

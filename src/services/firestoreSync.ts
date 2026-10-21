@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { SpecimenRecord } from '../types/specimen';
+import { compressDataUrl } from '../utils/imageCompress';
 
 export enum OperationType {
   CREATE = 'create',
@@ -39,18 +40,57 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 /**
+ * Prepares and compresses specimen payload so it strictly conforms to
+ * Firestore's 1MB per-document limit and removes undefined values.
+ */
+async function cleanSpecimenForCloud(specimen: SpecimenRecord): Promise<any> {
+  const cleanData = JSON.parse(JSON.stringify(specimen));
+  cleanData.updatedAt = new Date().toISOString();
+
+  // Compress hero image if it is a large base64 data URL
+  if (cleanData.heroImage && cleanData.heroImage.startsWith('data:image')) {
+    try {
+      cleanData.heroImage = await compressDataUrl(cleanData.heroImage, 1200, 0.8);
+    } catch {}
+  }
+
+  // Compress additional photos if any are large base64 data URLs
+  if (Array.isArray(cleanData.additionalPhotos)) {
+    for (const p of cleanData.additionalPhotos) {
+      if (p.url && p.url.startsWith('data:image')) {
+        try {
+          p.url = await compressDataUrl(p.url, 1200, 0.8);
+        } catch {}
+      }
+    }
+  }
+
+  // Compress sighting photos if any are large base64 data URLs
+  if (Array.isArray(cleanData.sightings)) {
+    for (const s of cleanData.sightings) {
+      if (s.curiousFindingPhoto && s.curiousFindingPhoto.startsWith('data:image')) {
+        try {
+          s.curiousFindingPhoto = await compressDataUrl(s.curiousFindingPhoto, 1200, 0.8);
+        } catch {}
+      }
+    }
+  }
+
+  return cleanData;
+}
+
+/**
  * Test server-side Firestore connection on initialization
  */
 export async function testFirestoreConnection(): Promise<boolean> {
   try {
-    await getDocFromServer(doc(db, 'specimens', 'ping'));
+    await getDocFromServer(doc(db, 'specimens', 'cr-bio-2026-0042'));
     return true;
   } catch (error: any) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.warn('Firestore offline o sin conectividad directa:', error.message);
       return false;
     }
-    // Any permission or missing doc response confirms reachability
     return true;
   }
 }
@@ -99,15 +139,39 @@ export function subscribeToSpecimens(
 }
 
 /**
+ * Directly fetch all specimens currently saved in Google Cloud Firestore.
+ * Used for forced/bidirectional synchronization.
+ */
+export async function fetchAllSpecimensFromCloud(): Promise<SpecimenRecord[]> {
+  try {
+    const snap = await getDocs(collection(db, 'specimens'));
+    if (snap.empty) return [];
+
+    const list: SpecimenRecord[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (data && data.scientificName) {
+        list.push({
+          ...(data as SpecimenRecord),
+          id: docSnap.id,
+        });
+      }
+    });
+    return list;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'specimens');
+    throw error;
+  }
+}
+
+/**
  * Save or update single specimen in cloud database
  */
 export async function saveSpecimenToCloud(specimen: SpecimenRecord): Promise<void> {
   const path = `specimens/${specimen.id}`;
   try {
     const docRef = doc(db, 'specimens', specimen.id);
-    // Sanitize undefined fields which Firestore rejects
-    const cleanData = JSON.parse(JSON.stringify(specimen));
-    cleanData.updatedAt = new Date().toISOString();
+    const cleanData = await cleanSpecimenForCloud(specimen);
     await setDoc(docRef, cleanData, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -140,8 +204,7 @@ export async function batchSyncSpecimensToCloud(specimens: SpecimenRecord[]): Pr
     for (const s of specimens) {
       if (s && s.id) {
         const ref = doc(db, 'specimens', s.id);
-        const clean = JSON.parse(JSON.stringify(s));
-        clean.updatedAt = new Date().toISOString();
+        const clean = await cleanSpecimenForCloud(s);
         batch.set(ref, clean, { merge: true });
       }
     }
@@ -152,7 +215,9 @@ export async function batchSyncSpecimensToCloud(specimens: SpecimenRecord[]): Pr
     for (const s of specimens) {
       try {
         await saveSpecimenToCloud(s);
-      } catch {}
+      } catch (err) {
+        console.warn(`Error al subir espécimen individual ${s?.id}:`, err);
+      }
     }
   }
 }

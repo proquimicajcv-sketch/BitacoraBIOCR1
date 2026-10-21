@@ -22,6 +22,7 @@ import {
   deleteSpecimenFromCloud,
   batchSyncSpecimensToCloud,
   testFirestoreConnection,
+  fetchAllSpecimensFromCloud,
 } from './services/firestoreSync';
 
 type ActiveView = 'COVER' | 'DETAIL' | 'MAP' | 'CATALOG' | 'STATISTICS';
@@ -327,7 +328,8 @@ export default function App() {
       if (saved) {
         let parsed: SpecimenRecord[] = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const sanitized = sanitizeSpecimens(parsed);
+          const merged = mergeSpecimenLists(parsed, INITIAL_SPECIMENS);
+          const sanitized = sanitizeSpecimens(merged);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
           return sanitized;
         }
@@ -413,6 +415,28 @@ export default function App() {
   // Ensures iPad, iPhone/Android, and Laptops stay in sync in real time
   useEffect(() => {
     testFirestoreConnection();
+
+    // Immediately fetch all cloud specimens to guarantee species added on other devices are pulled
+    fetchAllSpecimensFromCloud()
+      .then((cloudList) => {
+        if (Array.isArray(cloudList) && cloudList.length > 0) {
+          setSpecimens((prevLocal) => {
+            const merged = mergeSpecimenLists(prevLocal, cloudList);
+            const sanitized = sanitizeSpecimens(merged);
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+              localStorage.setItem(TIMESTAMP_KEY, String(Date.now()));
+            } catch {}
+            cacheAllSpecimensMedia(sanitized).catch(() => {});
+            return sanitized;
+          });
+          setCloudSyncStatus('connected');
+          setLastCloudSyncTime(new Date().toLocaleTimeString('es-CR'));
+        }
+      })
+      .catch((err) => {
+        console.warn('Initial cloud fetch error:', err);
+      });
 
     const unsubscribe = subscribeToSpecimens(
       (cloudSpecimens) => {
@@ -591,28 +615,60 @@ export default function App() {
   const handleSyncServer = async () => {
     setIsSyncingServer(true);
     try {
-      // 1. Push all specimens to Google Cloud Firestore in real-time
-      await batchSyncSpecimensToCloud(specimens);
+      // 1. Fetch latest from Google Cloud Firestore FIRST (bidirectional pull!)
+      let cloudList: SpecimenRecord[] = [];
+      try {
+        cloudList = await fetchAllSpecimensFromCloud();
+      } catch (err) {
+        console.warn('Error fetching all from cloud during manual sync:', err);
+      }
+
+      // 2. Also fetch from backend server endpoint if available
+      let serverList: SpecimenRecord[] = [];
+      try {
+        const sRes = await fetch('/api/database/specimens');
+        const sData = await sRes.json();
+        if (sData.success && Array.isArray(sData.data)) {
+          serverList = sData.data;
+        }
+      } catch {}
+
+      // 3. Unified merge of local, cloud, and server data
+      let unified = mergeSpecimenLists(specimens, cloudList);
+      unified = mergeSpecimenLists(unified, serverList);
+      const sanitized = sanitizeSpecimens(unified);
+
+      // 4. Update local state and storage
+      setSpecimens(sanitized);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+        localStorage.setItem(TIMESTAMP_KEY, String(Date.now()));
+        localStorage.removeItem(CHANGED_KEY);
+      } catch {}
+
+      // 5. Push unified list to Google Cloud Firestore (all devices sync)
+      await batchSyncSpecimensToCloud(sanitized);
       setCloudSyncStatus('connected');
       setLastCloudSyncTime(new Date().toLocaleTimeString('es-CR'));
 
-      // 2. Also sync to backend file backup
-      const res = await fetch('/api/database/specimens', {
+      // 6. Push unified list to backend database file
+      fetch('/api/database/specimens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ specimens, deviceId, lastModified: Date.now() }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSyncStatusToast('¡Sincronizado en tiempo real! Todos tus dispositivos (iPad, Celular y Laptop) están enlazados.');
-      } else {
-        setSyncStatusToast('Sincronizado con la nube de Google Cloud.');
-      }
+        body: JSON.stringify({ specimens: sanitized, deviceId, lastModified: Date.now() }),
+      }).catch(() => {});
+
+      cacheAllSpecimensMedia(sanitized).catch(() => {});
+
+      const totalSightings = sanitized.reduce((acc, s) => acc + (s.sightings?.length || 0), 0);
+      setSyncStatusToast(
+        `¡Sincronizado en tiempo real! Todos tus dispositivos (iPad, Celular y Laptop) están enlazados (${sanitized.length} especies, ${totalSightings} avistamientos).`
+      );
     } catch {
       setSyncStatusToast('Modo offline: tus datos siguen protegidos en este equipo y se sincronizarán al recuperar señal.');
     } finally {
       setIsSyncingServer(false);
-      setTimeout(() => setSyncStatusToast(null), 4000);
+      setTimeout(() => setSyncStatusToast(null), 4500);
     }
   };
 

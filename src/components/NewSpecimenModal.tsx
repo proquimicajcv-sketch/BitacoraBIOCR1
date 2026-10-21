@@ -11,6 +11,7 @@ import {
   detectLocationAndLifeZone,
 } from '../data/costaRicaData';
 import { saveImageOfflineAndServer } from '../utils/offlineImageCache';
+import { compressDataUrl } from '../utils/imageCompress';
 
 interface NewSpecimenModalProps {
   isOpen: boolean;
@@ -26,6 +27,10 @@ const SAMPLE_FIELD_IMAGES = [
   {
     name: 'Rana de las Nacientes (Los Santos)',
     url: '/isthmohyla_nacientes.jpg',
+  },
+  {
+    name: 'Salamandra (Tapantí)',
+    url: '/bolitoglossa_colonnea.jpg',
   },
   {
     name: 'Rana Ojos Rojos (Sarapiquí)',
@@ -344,14 +349,21 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
 
     const reader = new FileReader();
     reader.onload = async () => {
-      const result = reader.result as string;
+      let result = reader.result as string;
+      if (result && result.startsWith('data:image')) {
+        try {
+          result = await compressDataUrl(result, 1200, 0.8);
+        } catch {}
+      }
       setUploadedBase64(result);
       setHeroImage(result);
 
       // Guardar de inmediato en el servidor y caché offline para que sea visible en todos los dispositivos
       try {
-        const permanentUrl = await saveImageOfflineAndServer(file, 'especie_nueva');
-        setHeroImage(permanentUrl);
+        const permanentUrl = await saveImageOfflineAndServer(result, 'especie_nueva');
+        if (permanentUrl) {
+          setHeroImage(permanentUrl);
+        }
       } catch (err) {
         console.warn('Servidor offline o subiendo en segundo plano:', err);
       }

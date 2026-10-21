@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { INITIAL_SPECIMENS } from '../src/data/initialSpecimens';
 
 // Memory cache as fallback for serverless environments
 let memorySpecimens: any[] | null = null;
@@ -35,7 +36,7 @@ export default function handler(req: Request, res: Response) {
       });
     }
 
-    return res.status(200).json({ success: true, data: null });
+    return res.status(200).json({ success: true, data: INITIAL_SPECIMENS, lastModified: memoryLastModified });
   }
 
 function mergeSpecimens(existingList: any[], incomingList: any[]): any[] {
