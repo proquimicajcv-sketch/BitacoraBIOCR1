@@ -467,7 +467,6 @@ app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d' }));
 const CANDIDATE_MODELS = [
   'gemini-3.8-flash',
   'gemini-flash-latest',
-  'gemini-3.1-flash-lite',
 ];
 
 async function generateWithFallback(options: {
@@ -488,7 +487,7 @@ async function generateWithFallback(options: {
       });
 
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Timeout de 4.5s en ${model}`)), 4500)
+        setTimeout(() => reject(new Error(`Timeout de 3.2s en ${model}`)), 3200)
       );
 
       const response: any = await Promise.race([callPromise, timeoutPromise]);
