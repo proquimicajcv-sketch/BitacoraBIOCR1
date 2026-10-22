@@ -37,6 +37,7 @@ export interface BiologicalEnrichmentData {
     callType: string;
     dominantFrequencyRange: string;
     audioPatternDescription: string;
+    durationSeconds?: number;
   };
 }
 

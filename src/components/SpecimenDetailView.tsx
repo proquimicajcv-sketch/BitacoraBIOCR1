@@ -22,7 +22,6 @@ import { CostaRicaMap } from './CostaRicaMap';
 import { CachedImage } from './CachedImage';
 import { ThemeSwitcher } from './ThemeSwitcher';
 import { saveImageOfflineAndServer, handleImageOfflineFallback } from '../utils/offlineImageCache';
-import { getCostaRicaBiologicalData } from '../utils/costaRicaSpeciesKnowledge';
 import {
   formatCoordinatesDMS,
   findNearestHotspot,
@@ -186,106 +185,6 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
   }, [specimen]);
 
   const currentSpec = activeSpecimen || specimen;
-
-  // AI Biological Enrichment State (Gemini 3.8 Flash)
-  const [isDetailEnrichingAI, setIsDetailEnrichingAI] = useState(false);
-  const [detailAIEnrichMsg, setDetailAIEnrichMsg] = useState<string | null>(null);
-
-  const handleDetailEnrichWithAI = async () => {
-    setIsDetailEnrichingAI(true);
-    setDetailAIEnrichMsg(null);
-
-    let term = (currentSpec.scientificName || currentSpec.commonName || '').trim();
-    if (!term || term === 'Espécimen Silvestre' || term.toLowerCase().includes('nuevo')) {
-      term = currentSpec.taxonGroup === 'Reptilia' ? 'Bothriechis schlegelii' :
-             currentSpec.taxonGroup === 'Mammalia' ? 'Tapirus bairdii' :
-             currentSpec.taxonGroup === 'Aves' ? 'Pharomachrus mocinno' :
-             currentSpec.taxonGroup === 'Insecta' ? 'Morpho helenor' :
-             currentSpec.taxonGroup === 'Orchidaceae' ? 'Guarianthe skinneri' :
-             'Agalychnis callidryas';
-    }
-
-    let bio: any = null;
-    let isLiveAI = false;
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 9000);
-
-      const response = await fetch('/api/ai/enrich-scientific-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          scientificName: currentSpec.scientificName,
-          commonName: currentSpec.commonName,
-          taxonGroup: currentSpec.taxonGroup,
-          query: term,
-          locality: currentSpec.georeference.locality,
-          province: currentSpec.georeference.province,
-          elevation: currentSpec.georeference.elevationMeters,
-          lifeZone: currentSpec.georeference.lifeZone,
-          microhabitat: currentSpec.georeference.microhabitat,
-          coordinates: {
-            lat: currentSpec.georeference.latitude,
-            lng: currentSpec.georeference.longitude,
-          },
-        }),
-      });
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const resData = await response.json();
-        if (resData.success && resData.data) {
-          bio = resData.data;
-          isLiveAI = !resData.isOfflineFallback;
-        }
-      }
-    } catch (err) {
-      console.warn('Conexión con servidor no disponible, usando catálogo de Costa Rica:', err);
-    }
-
-    if (!bio) {
-      bio = getCostaRicaBiologicalData(term, currentSpec.taxonGroup, {
-        locality: currentSpec.georeference.locality,
-        province: currentSpec.georeference.province,
-        elevation: currentSpec.georeference.elevationMeters,
-        lifeZone: currentSpec.georeference.lifeZone,
-        microhabitat: currentSpec.georeference.microhabitat,
-      });
-    }
-
-    const updatedSpecimen: SpecimenRecord = {
-      ...currentSpec,
-      scientificName: currentSpec.scientificName || bio.scientificName || currentSpec.scientificName,
-      commonName: currentSpec.commonName || bio.commonName || currentSpec.commonName,
-      morphometrics: {
-        ...(currentSpec.morphometrics || {}),
-        colorationAndAnatomy: bio.colorationAndAnatomy || currentSpec.morphometrics?.colorationAndAnatomy || '',
-        ethologyAndReproduction: bio.ethologyAndReproduction || currentSpec.morphometrics?.ethologyAndReproduction || '',
-        courtshipAndMating: bio.courtshipAndMating || currentSpec.morphometrics?.courtshipAndMating || '',
-        interspecificRelations: bio.interspecificRelations || currentSpec.morphometrics?.interspecificRelations || '',
-        confirmedScientificData: bio.confirmedScientificData || currentSpec.morphometrics?.confirmedScientificData || '',
-        snoutVentLengthMm: currentSpec.morphometrics?.snoutVentLengthMm || bio.morphometrics?.snoutVentLengthMm || 58.0,
-      },
-    };
-
-    setActiveSpecimen(updatedSpecimen);
-
-    if (onSaveSpecimen) {
-      onSaveSpecimen(updatedSpecimen);
-    }
-
-    const speciesLabel = updatedSpecimen.scientificName || updatedSpecimen.commonName || term;
-    const siteLabel = currentSpec.georeference.locality ? ` en ${currentSpec.georeference.locality}` : '';
-    setDetailAIEnrichMsg(
-      isLiveAI
-        ? `✨ ¡Biología completada por IA (Gemini 3.8 Flash) para ${speciesLabel}! Datos específicos${siteLabel} con citas científicas de UCR, OET y literatura académica.`
-        : `✅ ¡Biología completada con éxito para ${speciesLabel}! Datos biológicos específicos${siteLabel}, cromática y etología cargados.`
-    );
-    setTimeout(() => setDetailAIEnrichMsg(null), 8000);
-    setIsDetailEnrichingAI(false);
-  };
 
   // Direct Sighting Modal State
   const [isAddSightingModalOpen, setIsAddSightingModalOpen] = useState(false);
@@ -1275,34 +1174,7 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
                   {specimen.fieldFolio}
                 </span>
               </div>
-
-              <button
-                type="button"
-                onClick={handleDetailEnrichWithAI}
-                disabled={isDetailEnrichingAI}
-                className="px-3 py-1.5 rounded-lg bg-[#002217] hover:bg-[#006c49] text-[#6cf8bb] text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-60 border border-[#6cf8bb]/40"
-                title="Autocompletar cromática, etología, reproducción, relaciones interespecíficas y datos de campo con IA"
-              >
-                {isDetailEnrichingAI ? (
-                  <>
-                    <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
-                    <span>Consultando IA...</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-[16px] text-[#6cf8bb]">auto_awesome</span>
-                    <span>✨ Autocompletar Biología con IA</span>
-                  </>
-                )}
-              </button>
             </div>
-
-            {detailAIEnrichMsg && (
-              <div className="p-2.5 rounded-lg bg-[#c1ecd7] text-[#002116] font-medium text-xs flex items-center gap-2 animate-in fade-in">
-                <span className="material-symbols-outlined text-[#006c49] text-[18px]">verified</span>
-                <span>{detailAIEnrichMsg}</span>
-              </div>
-            )}
 
             <div className="p-3 rounded-lg bg-[#f2f4ee] flex flex-col gap-2">
               <div className="flex items-center justify-between">
@@ -1316,7 +1188,7 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
               <p className="text-[13px] text-[#191c19] leading-relaxed">
                 <strong className="font-bold text-[#002217]">Cromática y Anatomía: </strong>
                 {currentSpec.morphometrics?.colorationAndAnatomy || (
-                  <span className="text-[#717974] italic">Sin notas cromáticas registradas. Haz clic en "Autocompletar Biología con IA" arriba para llenarlas.</span>
+                  <span className="text-[#717974] italic">Sin notas cromáticas registradas. Puedes agregarlas editando el espécimen.</span>
                 )}
               </p>
             </div>
