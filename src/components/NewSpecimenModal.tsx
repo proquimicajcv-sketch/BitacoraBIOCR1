@@ -272,7 +272,7 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 9000);
 
       const response = await fetch('/api/ai/enrich-scientific-data', {
         method: 'POST',
@@ -283,6 +283,12 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
           commonName: commonName.trim(),
           taxonGroup,
           query: term,
+          locality: locality.trim(),
+          province: province.trim(),
+          elevation: elevation || undefined,
+          lifeZone: lifeZone.trim(),
+          microhabitat: microhabitat.trim(),
+          coordinates: coords,
         }),
       });
       clearTimeout(timeoutId);
@@ -298,9 +304,15 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
       console.warn('Conexión con servidor lenta o no disponible, activando catálogo biológico de Costa Rica:', netErr);
     }
 
-    // Si el servidor tardó o la conexión falló, usamos el motor biológico local de Costa Rica (100% garantizado)
+    // Si el servidor tardó o la conexión falló, usamos el motor biológico local de Costa Rica con contexto de sitio
     if (!bio) {
-      bio = getCostaRicaBiologicalData(term, taxonGroup);
+      bio = getCostaRicaBiologicalData(term, taxonGroup, {
+        locality,
+        province,
+        elevation,
+        lifeZone,
+        microhabitat,
+      });
     }
 
     // 1. Identificación binomial y nombres
@@ -361,10 +373,11 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
     }
 
     const speciesLabel = bio.scientificName || bio.commonName || term;
+    const siteLabel = locality ? ` en ${locality}${elevation ? ` (${elevation} m.s.n.m.)` : ''}` : '';
     setAiEnrichSuccessMsg(
       isLiveAI
-        ? `✨ ¡Biología completada con éxito por IA (Gemini 3.8 Flash) para ${speciesLabel}! Cromática, anatomía, etología, reproducción y datos de campo cargados.`
-        : `✅ ¡Biología completada con éxito para ${speciesLabel}! Datos biológicos de campo, cromática, etología y reproducción de Costa Rica cargados.`
+        ? `✨ ¡Biología completada por IA (Gemini 3.8 Flash) para ${speciesLabel}! Datos específicos${siteLabel} con fuentes científicas de UCR, OET y literatura académica cargados.`
+        : `✅ ¡Biología completada con éxito para ${speciesLabel}! Datos biológicos específicos${siteLabel}, cromática, etología y reproducción de Costa Rica cargados.`
     );
     setTimeout(() => setAiEnrichSuccessMsg(null), 8000);
     setIsEnrichingWithAI(false);

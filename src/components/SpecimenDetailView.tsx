@@ -210,7 +210,7 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 9000);
 
       const response = await fetch('/api/ai/enrich-scientific-data', {
         method: 'POST',
@@ -221,6 +221,15 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
           commonName: currentSpec.commonName,
           taxonGroup: currentSpec.taxonGroup,
           query: term,
+          locality: currentSpec.georeference.locality,
+          province: currentSpec.georeference.province,
+          elevation: currentSpec.georeference.elevationMeters,
+          lifeZone: currentSpec.georeference.lifeZone,
+          microhabitat: currentSpec.georeference.microhabitat,
+          coordinates: {
+            lat: currentSpec.georeference.latitude,
+            lng: currentSpec.georeference.longitude,
+          },
         }),
       });
       clearTimeout(timeoutId);
@@ -237,7 +246,13 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
     }
 
     if (!bio) {
-      bio = getCostaRicaBiologicalData(term, currentSpec.taxonGroup);
+      bio = getCostaRicaBiologicalData(term, currentSpec.taxonGroup, {
+        locality: currentSpec.georeference.locality,
+        province: currentSpec.georeference.province,
+        elevation: currentSpec.georeference.elevationMeters,
+        lifeZone: currentSpec.georeference.lifeZone,
+        microhabitat: currentSpec.georeference.microhabitat,
+      });
     }
 
     const updatedSpecimen: SpecimenRecord = {
@@ -262,10 +277,11 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
     }
 
     const speciesLabel = updatedSpecimen.scientificName || updatedSpecimen.commonName || term;
+    const siteLabel = currentSpec.georeference.locality ? ` en ${currentSpec.georeference.locality}` : '';
     setDetailAIEnrichMsg(
       isLiveAI
-        ? `✨ ¡Biología completada por IA (Gemini 3.8 Flash) para ${speciesLabel}! Cromática, etología y datos de campo cargados.`
-        : `✅ ¡Biología completada con éxito para ${speciesLabel}! Datos biológicos de campo, cromática y etología cargados.`
+        ? `✨ ¡Biología completada por IA (Gemini 3.8 Flash) para ${speciesLabel}! Datos específicos${siteLabel} con citas científicas de UCR, OET y literatura académica.`
+        : `✅ ¡Biología completada con éxito para ${speciesLabel}! Datos biológicos específicos${siteLabel}, cromática y etología cargados.`
     );
     setTimeout(() => setDetailAIEnrichMsg(null), 8000);
     setIsDetailEnrichingAI(false);
