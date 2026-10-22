@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
+import { getCostaRicaBiologicalData } from './src/utils/costaRicaSpeciesKnowledge';
 
 dotenv.config();
 
@@ -467,6 +468,7 @@ app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d' }));
 const CANDIDATE_MODELS = [
   'gemini-3.8-flash',
   'gemini-flash-latest',
+  'gemini-3.1-flash-lite',
 ];
 
 async function generateWithFallback(options: {
@@ -487,7 +489,7 @@ async function generateWithFallback(options: {
       });
 
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Timeout de 3.2s en ${model}`)), 3200)
+        setTimeout(() => reject(new Error(`Timeout de 6s en ${model}`)), 6000)
       );
 
       const response: any = await Promise.race([callPromise, timeoutPromise]);
@@ -495,8 +497,12 @@ async function generateWithFallback(options: {
         return response;
       }
     } catch (err: any) {
-      console.warn(`[AI Gemini] Modelo ${model} (${err?.message?.slice(0, 60)}...), intentando siguiente modelo...`);
+      console.warn(`[AI Gemini] Modelo ${model} (${err?.message?.slice(0, 60)}...)`);
       lastError = err;
+      // If project quota is exhausted (429), all candidate models on this key will fail with 429; fall back immediately
+      if (err?.status === 429 || (err?.message && (err.message.includes('quota') || err.message.includes('429')))) {
+        break;
+      }
     }
   }
   throw lastError || new Error('No se pudo generar respuesta con ninguno de los modelos de IA disponibles.');
@@ -594,360 +600,13 @@ interface LocationContext {
 }
 
 function getCostaRicanFallbackSpecies(term: string, taxonGroupHint?: string, locCtx?: LocationContext) {
-  const t = (term || '').toLowerCase().trim();
-  const siteDesc = locCtx?.locality
-    ? `Observación contextualizada en ${locCtx.locality}${locCtx.province ? `, ${locCtx.province}` : ''}${locCtx.elevation ? ` (${locCtx.elevation} m.s.n.m.)` : ''}${locCtx.lifeZone ? ` en zona ${locCtx.lifeZone}` : ''}.`
-    : '';
-
-  if (t.includes('ojos rojos') || t.includes('callidryas') || t.includes('agalychnis')) {
-    return {
-      scientificName: 'Agalychnis callidryas',
-      commonName: 'Rana arborícola de ojos rojos / Red-eyed Treefrog',
-      taxonGroup: 'Amphibia',
-      realm: 'Neotropical',
-      taxonomy: {
-        kingdom: 'Animalia',
-        phylum: 'Chordata',
-        class: 'Amphibia',
-        order: 'Anura',
-        family: 'Hylidae',
-        genus: 'Agalychnis',
-        species: 'callidryas',
-      },
-      morphometrics: {
-        snoutVentLengthMm: 58.0,
-        totalLengthMm: 58.0,
-        weightGrams: 15.0,
-      },
-      colorationAndAnatomy: `Dorso verde esmeralda brillante con flancos laterales azul cobalto cruzados por franjas verticales blancas o crema. Ojos carmesí saltones con pupilas verticales y membrana nictitante dorada reticulada. Discos dactilares naranja encendido. ${siteDesc ? `${siteDesc} En este estrato, la pigmentación cutánea maximiza la cripsis en el haz foliar durante el reposo diurno.` : ''}`,
-      ethologyAndReproduction: `Arborícola y nocturna. Delimita perchas en el envés de hojas sobre charcas temporales mediante sacudidas corporales (tremulación) y vocalizaciones nupciales. ${siteDesc ? `En esta localidad, la actividad de forrajeo y cantos se concentra tras episodios de lluvia vespertina.` : ''}`,
-      courtshipAndMating: 'Vocalización nupcial gutural ("chack"). Amplexo axilar en ramas suspendidas; desove en masas gelatinosas de 30-50 huevos pegadas a hojas colgantes sobre charcas para que los renacuajos caigan directamente al agua al eclosionar.',
-      interspecificRelations: 'Compite por sitios de canto con Dendropsophus ebraccatus. Depredada activamente por la serpiente comedora de huevos Leptodeira septentrionalis y avispas sociales Polybia. Embriones dotados de plasticidad fenotípica con eclosión prematura defensiva inducida por vibraciones sísmicas de depredadores.',
-      confirmedScientificData: 'Warkentin, K. M. (1995, 2005). "Adaptive plasticity in hatching timing in response to predatory snakes and wasps in Costa Rica" (Estación Biológica La Selva, OET / Boston Univ.); Savage, J. M. (2002). The Amphibians and Reptiles of Costa Rica. University of Chicago Press, pp. 280-283; Colecciones herpetológicas del Museo de Zoología de la Universidad de Costa Rica (UCR-MZ).',
-      suggestedHoldridgeZone: locCtx?.lifeZone || 'Bosque Muy Húmedo Tropical (bmh-T)',
-      microhabitat: locCtx?.microhabitat || 'Estrato arbustivo y hojas de Heliconia suspendidas sobre charca temporal.',
-      elevationMeters: locCtx?.elevation ? Number(locCtx.elevation) : 68,
-      hasBioacoustics: true,
-      bioacoustics: {
-        title: 'Canto de Anuncio Territorial',
-        callType: 'Vocalización Territorial',
-        dominantFrequencyRange: '1.8 - 2.4 kHz',
-        durationSeconds: 24,
-        audioPatternDescription: '"Chack-chack" gutural monotonal pausado',
-      },
-      confidenceScore: 0.95,
-      identificationRationale: 'Caracteres diagnósticos de coloración verde esmeralda con flancos azules y ojos rojos inconfundibles de la anurofauna costarricense.',
-    };
-  }
-
-  if (t.includes('nacientes') || t.includes('isthmohyla') || t.includes('santos') || t.includes('dota')) {
-    return {
-      scientificName: 'Isthmohyla nacientes',
-      commonName: 'Rana arborícola de las nacientes / Headwater treefrog',
-      taxonGroup: 'Amphibia',
-      realm: 'Neotropical',
-      taxonomy: {
-        kingdom: 'Animalia',
-        phylum: 'Chordata',
-        class: 'Amphibia',
-        order: 'Anura',
-        family: 'Hylidae',
-        genus: 'Isthmohyla',
-        species: 'nacientes',
-      },
-      morphometrics: {
-        snoutVentLengthMm: 29.5,
-        totalLengthMm: 29.5,
-        weightGrams: 2.1,
-      },
-      colorationAndAnatomy: `Coloración dorsal verde esmeralda críptica con punteaduras oscuras y reticulaciones doradas en el iris. Vientre granular translúcido que permite visualizar vísceras. Membrana interdigital moderada. ${siteDesc ? `Adaptada a las bajas temperaturas de las nacientes de montaña de ${locCtx?.locality || 'la Zona de los Santos'}.` : ''}`,
-      ethologyAndReproduction: 'Microendemismo ripícola de alta montaña de la Cordillera de Talamanca. Activa en horarios nocturnos en el margen de nacientes cristalinas y quebradas con densa cobertura de briófitos y helechos.',
-      courtshipAndMating: 'Canto acústico de alta resonancia emitido a corta distancia del caudal de agua (30-60 cm). Fecundación y ovoposición en remansos de quebrada limpia con alta oxigenación disuelta.',
-      interspecificRelations: 'Bioindicador de integridad hidrológica en la Zona de los Santos y cuenca del Río Savegre. Coexiste con Pristimantis ridens e Isthmohyla rivularis. Altamente sensible a sedimentación y pesticidas.',
-      confirmedScientificData: 'Kubicki, B. (2013). "A new species of arboreal frog from the highlands of Costa Rica"; Leenders, T. (2016). Amphibians of Costa Rica: A Field Guide. Zona Tropical Publications / Cornell University Press; Informes técnicos de monitoreo de anfibios amenazados del SINAC (Área de Conservación Pacífico Central - ACOPAC).',
-      suggestedHoldridgeZone: locCtx?.lifeZone || 'Bosque Pluvial Montano Bajo (bp-MB)',
-      microhabitat: locCtx?.microhabitat || 'Vegetación riparia y ramas caídas sobre nacientes cristalinas a 45 cm del caudal.',
-      elevationMeters: locCtx?.elevation ? Number(locCtx.elevation) : 1650,
-      hasBioacoustics: true,
-      bioacoustics: {
-        title: 'Canto de Llamado en Quebrada',
-        callType: 'Vocalización de Anuncio',
-        dominantFrequencyRange: '2.5 - 3.2 kHz',
-        durationSeconds: 24,
-        audioPatternDescription: 'Trino metálico rápido adaptado al estruendo de aguas torrentosas de montaña',
-      },
-      confidenceScore: 0.98,
-      identificationRationale: 'Ejemplar correspondiente a la localidad tipo en la Zona de los Santos con caracteres diagnósticos de Isthmohyla nacientes.',
-    };
-  }
-
-  if (t.includes('quetzal') || t.includes('mocinno') || t.includes('pharomachrus')) {
-    return {
-      scientificName: 'Pharomachrus mocinno',
-      commonName: 'Quetzal resplandeciente / Resplendent Quetzal',
-      taxonGroup: 'Aves',
-      realm: 'Neotropical',
-      taxonomy: {
-        kingdom: 'Animalia',
-        phylum: 'Chordata',
-        class: 'Aves',
-        order: 'Trogoniformes',
-        family: 'Trogonidae',
-        genus: 'Pharomachrus',
-        species: 'mocinno',
-      },
-      morphometrics: {
-        snoutVentLengthMm: 380.0,
-        totalLengthMm: 850.0,
-        weightGrams: 210.0,
-      },
-      colorationAndAnatomy: `Plumaje dorsal verde iridiscente con reflejos dorados y esmeralda producidos por nanocristales de melanina. Pecho y vientre rojo carmesí brillante. Plumas cobertoras caudales del macho alargadas en guías ondeantes de hasta 65 cm. ${siteDesc ? `En ${locCtx?.locality || 'los robledales montanos'}, el plumaje denso proporciona aislamiento térmico frente a la niebla persistente.` : ''}`,
-      ethologyAndReproduction: 'Especie frugívora especializada en frutos de lauráceas silvestres (aguacatillos, Ocotea y Nectandra). Anida en tocones secos dentro de robledales primarios de altura.',
-      courtshipAndMating: 'Vuelos nupciales en parábola por encima del dosel del bosque nuboso en los meses de febrero a mayo, sincronizados con la fructificación de lauráceas.',
-      interspecificRelations: 'Dispersor clave de semillas de robledales y lauráceas en Talamanca y Monteverde. Depredado por rapaces montanas (Spizaetus ornatus) y comadrejas (Mustela frenata).',
-      confirmedScientificData: 'Stiles, F. G., & Skutch, A. F. (1989). A Guide to the Birds of Costa Rica. Cornell University Press, pp. 216-217; Wheelwright, N. T. (1983). "Fruits and the ecology of Resplendent Quetzals". Biotropica 15(2): 132-140; Registro ornitológico de la Universidad de Costa Rica y Asociación Ornitológica de Costa Rica (AOCR).',
-      suggestedHoldridgeZone: locCtx?.lifeZone || 'Bosque Pluvial Montano Bajo (bp-MB)',
-      microhabitat: locCtx?.microhabitat || 'Dosel y estrato medio de robledales con musgos y bromelias epífitas.',
-      elevationMeters: locCtx?.elevation ? Number(locCtx.elevation) : 2200,
-      hasBioacoustics: true,
-      bioacoustics: {
-        title: 'Silbido Nupcial Melódico',
-        callType: 'Vocalización Territorial / Vuelo Nupcial',
-        dominantFrequencyRange: '1.2 - 1.8 kHz',
-        durationSeconds: 20,
-        audioPatternDescription: '"Uoc-uoc-uoc" quejumbroso y ascendente en dosel',
-      },
-      confidenceScore: 0.96,
-      identificationRationale: 'Ave insignia de los bosques nubosos de Costa Rica identificada por morfología trogónida.',
-    };
-  }
-
-  if (t.includes('oropel') || t.includes('pestañas') || t.includes('schlegelii') || t.includes('bothriechis')) {
-    return {
-      scientificName: 'Bothriechis schlegelii',
-      commonName: 'Bocaracá / Víbora de pestañas / Eyelash Viper',
-      taxonGroup: 'Reptilia',
-      realm: 'Neotropical',
-      taxonomy: {
-        kingdom: 'Animalia',
-        phylum: 'Chordata',
-        class: 'Reptilia',
-        order: 'Squamata',
-        family: 'Viperidae',
-        genus: 'Bothriechis',
-        species: 'schlegelii',
-      },
-      morphometrics: {
-        snoutVentLengthMm: 550.0,
-        totalLengthMm: 680.0,
-        weightGrams: 160.0,
-      },
-      colorationAndAnatomy: `Polimorfismo cromático sobresaliente (morfos amarillo oropel, verde musgo, café y pardo moteado). Escamas supraoculares espinosas modificadas ("pestañas") y cola prensil prensora adaptada a perchas de sotobosque. ${siteDesc ? `En ${locCtx?.locality || 'esta localidad'}, el patrón de color se camufla con las inflorescencias y epífitas locales.` : ''}`,
-      ethologyAndReproduction: 'Arborícola y nocturna. Caza por emboscada en inflorescencias de Heliconia y palmas de sotobosque, esperando colibríes, pequeños murciélagos y anuros.',
-      courtshipAndMating: 'Vivípara. Cortejo con frotamiento mentoniano. Gestación de 4 a 6 meses; nacen entre 6 y 22 crías completamente desarrolladas con aparato inoculador funcional.',
-      interspecificRelations: 'Compite por perchas con Bothriechis lateralis en zonas de ecotono premontano. Depredada por aves rapaces (Leucopternis) y coatíes (Nasua narica). Veneno procoagulante y miotóxico.',
-      confirmedScientificData: 'Solórzano, A. (2004). Serpientes de Costa Rica: Distribución, taxonomía e historia natural. INBio, pp. 288-291; Lomonte, B., et al. (Instituto Clodomiro Picado, UCR). "Proteomic and toxicological characterization of Bothriechis venoms in Costa Rica"; Savage, J. M. (2002). Amphibians and Reptiles of Costa Rica, pp. 726-728.',
-      suggestedHoldridgeZone: locCtx?.lifeZone || 'Bosque Muy Húmedo Tropical (bmh-T)',
-      microhabitat: locCtx?.microhabitat || 'Sotobosque arbustivo, inflorescencias de Heliconia y palmas bajas entre 1 y 2.5 m del suelo.',
-      elevationMeters: locCtx?.elevation ? Number(locCtx.elevation) : 350,
-      hasBioacoustics: false,
-      confidenceScore: 0.98,
-      identificationRationale: 'Escamas supraoculares modificadas ("pestañas") y cola prensil inconfundibles de Viperidae arborícola en Costa Rica.',
-    };
-  }
-
-  if (t.includes('danta') || t.includes('tapir') || t.includes('bairdii')) {
-    return {
-      scientificName: 'Tapirus bairdii',
-      commonName: 'Danta centroamericana / Baird\'s Tapir',
-      taxonGroup: 'Mammalia',
-      realm: 'Neotropical',
-      taxonomy: {
-        kingdom: 'Animalia',
-        phylum: 'Chordata',
-        class: 'Mammalia',
-        order: 'Perissodactyla',
-        family: 'Tapiridae',
-        genus: 'Tapirus',
-        species: 'bairdii',
-      },
-      morphometrics: {
-        snoutVentLengthMm: 2000.0,
-        totalLengthMm: 2150.0,
-        weightGrams: 240000.0,
-      },
-      colorationAndAnatomy: `Pelaje corto pardo oscuro a negruzco con bordes de las orejas blancos y garganta amarillenta. Probóscide prensil flexible y musculosa para ramoneo. ${siteDesc ? `En ${locCtx?.locality || 'este macizo montano'}, utiliza senderos históricos entre robledales y páramo.` : ''}`,
-      ethologyAndReproduction: 'Solitaria, crepuscular y nocturna. Excelente nadadora. Marca senderos y letrinas comunitarias en bordes de ríos y humedales de altura y bajura.',
-      courtshipAndMating: 'Gestación prolongada de 13 meses. Nace una sola cría con pelaje rayado y moteado críptico (disipado a los 6 meses de edad).',
-      interspecificRelations: 'El mayor mamífero terrestre neotropical. Dispersor primario de semillas de frutos grandes en Corcovado y Talamanca. Depredador natural: Jaguar (Panthera onca).',
-      confirmedScientificData: 'Wainwright, M. (2007). The Mammals of Costa Rica: A Natural History and Field Guide. Zona Tropical Publications, pp. 254-257; Naranjo, E. J., & Bodmer, R. E. "Population ecology and conservation of Baird\'s tapir"; Monitoreo del Proyecto Danta / Universidad Nacional (UNA) y SINAC.',
-      suggestedHoldridgeZone: locCtx?.lifeZone || 'Bosque Pluvial Montano Bajo (bp-MB)',
-      microhabitat: locCtx?.microhabitat || 'Bosques maduros con abundancia de cursos de agua y vegetación ripícola densa.',
-      elevationMeters: locCtx?.elevation ? Number(locCtx.elevation) : 1800,
-      hasBioacoustics: true,
-      bioacoustics: {
-        title: 'Silbido Agudo de Contacto',
-        callType: 'Silbido de Alarma y Contacto',
-        dominantFrequencyRange: '3.0 - 6.5 kHz',
-        durationSeconds: 8,
-        audioPatternDescription: 'Silbido agudo penetrante y chasquidos nasales emitidos por la probóscide',
-      },
-      confidenceScore: 0.99,
-      identificationRationale: 'Mayor herbívoro silvestre de Costa Rica con probóscide diagnóstica inconfundible.',
-    };
-  }
-
-  if (t.includes('morpho') || t.includes('mariposa azul') || t.includes('peleides') || t.includes('helenor')) {
-    return {
-      scientificName: 'Morpho helenor',
-      commonName: 'Mariposa Morpho azul común / Blue Morpho Butterfly',
-      taxonGroup: 'Insecta',
-      realm: 'Neotropical',
-      taxonomy: {
-        kingdom: 'Animalia',
-        phylum: 'Arthropoda',
-        class: 'Insecta',
-        order: 'Lepidoptera',
-        family: 'Nymphalidae',
-        genus: 'Morpho',
-        species: 'helenor',
-      },
-      morphometrics: {
-        snoutVentLengthMm: 45.0,
-        totalLengthMm: 140.0,
-        weightGrams: 1.2,
-      },
-      colorationAndAnatomy: `Cara dorsal azul metálico iridiscente producida por nanoestructuras de difracción física en escamas alares. Cara ventral marrón críptica con ocelos disuasivos. ${siteDesc ? `En ${locCtx?.locality || 'esta zona húmeda'}, patrulla claros y quebradas con iluminación matutina directa.` : ''}`,
-      ethologyAndReproduction: 'Vuelo ondulante territorial a lo largo de senderos fluviales y quebradas. Se alimenta de frutos en descomposición, savia fermentada y carroña.',
-      courtshipAndMating: 'Despliegues nupciales aéreos en claros de luz del dosel. Ovoposición solitaria en hojas de leguminosas silvestres hospederas (Machaerium, Lonchocarpus).',
-      interspecificRelations: 'Depredada por jacamares (Galbula ruficauda) y atrapamoscas. La iridiscencia flash durante el batido alar desorienta a los depredadores aéreos.',
-      confirmedScientificData: 'DeVries, P. J. (1987). The Butterflies of Costa Rica and Their Natural History (Vol. I: Papilionidae, Pieridae, Nymphalidae). Princeton University Press, pp. 248-251; Vukusic, P., et al. (OET / Exeter Univ.). "Structural colour and nanostructures in Morpho butterflies of Costa Rica".',
-      suggestedHoldridgeZone: locCtx?.lifeZone || 'Bosque Muy Húmedo Tropical (bmh-T)',
-      microhabitat: locCtx?.microhabitat || 'Senderos claros y márgenes de ríos en bosques húmedos tropicales.',
-      elevationMeters: locCtx?.elevation ? Number(locCtx.elevation) : 250,
-      hasBioacoustics: false,
-      confidenceScore: 0.97,
-      identificationRationale: 'Lepidóptero neotropical inconfundible por iridiscencia alar estructural y ocelos ventrales.',
-    };
-  }
-
-  if (t.includes('guaria') || t.includes('skinneri') || t.includes('guarianthe')) {
-    return {
-      scientificName: 'Guarianthe skinneri',
-      commonName: 'Guaria morada / Flor Nacional de Costa Rica',
-      taxonGroup: 'Orchidaceae',
-      realm: 'Neotropical',
-      taxonomy: {
-        kingdom: 'Plantae',
-        phylum: 'Tracheophyta',
-        class: 'Liliopsida',
-        order: 'Asparagales',
-        family: 'Orchidaceae',
-        genus: 'Guarianthe',
-        species: 'skinneri',
-      },
-      morphometrics: {
-        snoutVentLengthMm: 350.0,
-        totalLengthMm: 450.0,
-        weightGrams: 320.0,
-      },
-      colorationAndAnatomy: `Orquídea epífita simpodial con pseudobulbos acanalados coronados por dos hojas coriáceas. Flores de color púrpura-morado brillante con labelo tubular más oscuro y garganta blanca. ${siteDesc ? `En ${locCtx?.locality || 'los valles intermontanos'}, crece sobre árboles centenarios con alta humedad ambiental y buena insolación matutina.` : ''}`,
-      ethologyAndReproduction: 'Floración sincrónica estacional entre enero y abril (época seca). Polinización especializada por abejas de las orquídeas (Euglossini).',
-      courtshipAndMating: 'Atracción de polinizadores machos mediante emisión de fragancias florales terpénicas que los machos colectan para su cortejo territorial.',
-      interspecificRelations: 'Epífita comensal que habita ramas rugosas de árboles como Guácimo (Guazuma ulmifolia) y Roble sabana (Tabebuia rosea) sin parasitar el hospedero.',
-      confirmedScientificData: 'Dressler, R. L. (1993). Field Guide to the Orchids of Costa Rica and Panama. Cornell University Press; Pupulin, F., et al. (Jardín Botánico Lankester, Universidad de Costa Rica). "Orchid Genera of Costa Rica"; Decreto Ejecutivo N° 24 de 1939 declarándola Flor Nacional.',
-      suggestedHoldridgeZone: locCtx?.lifeZone || 'Bosque Húmedo Premontano (bh-P)',
-      microhabitat: locCtx?.microhabitat || 'Dosel medio y horquetas de árboles viejos en valles intermontanos y riberas de ríos.',
-      elevationMeters: locCtx?.elevation ? Number(locCtx.elevation) : 900,
-      hasBioacoustics: false,
-      confidenceScore: 0.99,
-      identificationRationale: 'Epífita orquidácea emblemática con flores púrpuras y labelo tubular característico.',
-    };
-  }
-
-  if (t.includes('congo') || t.includes('aullador') || t.includes('palliata') || t.includes('alouatta')) {
-    return {
-      scientificName: 'Alouatta palliata',
-      commonName: 'Mono congo / Mono aullador de manto / Mantled Howler Monkey',
-      taxonGroup: 'Mammalia',
-      realm: 'Neotropical',
-      taxonomy: {
-        kingdom: 'Animalia',
-        phylum: 'Chordata',
-        class: 'Mammalia',
-        order: 'Primates',
-        family: 'Atelidae',
-        genus: 'Alouatta',
-        species: 'palliata',
-      },
-      morphometrics: {
-        snoutVentLengthMm: 550.0,
-        totalLengthMm: 1150.0,
-        weightGrams: 6500.0,
-      },
-      colorationAndAnatomy: `Pelaje negro brillante con manto lateral dorado a café amarillento en los flancos. Hueso hioides hipertrofiado como caja de resonancia acústica. Cola prensil con almohadilla táctil glabra. ${siteDesc ? `En ${locCtx?.locality || 'este bosque'}, la tropa aprovecha árboles de higuerón (Ficus) y leguminosas en galería.` : ''}`,
-      ethologyAndReproduction: 'Folívoro y frugívoro arbóreo diurno. Tropas estables de 10 a 20 individuos con jerarquía de machos dominantes. Reposan hasta 70% del tiempo para fermentar celulosa.',
-      courtshipAndMating: 'Apareamiento iniciado por la hembra con sacudidas rítmicas linguales. Gestación de 186 días, con cuidado maternal y transporte dorsal de crías durante meses.',
-      interspecificRelations: 'Compite por higos con Ateles geoffroyi y Cebus imitator. Aullidos territoriales matutinos audibles a más de 3 km. Depredado ocasionalmente por Harpia harpyja y felinos grandes.',
-      confirmedScientificData: 'Glander, K. E. (1981, en Janzen D. H. Costa Rican Natural History, pp. 448-449); Clarke, M. R., et al. (OET / UCR). "Long-term monitoring of mantled howler populations in Costa Rica"; Monitoreos de primatología en Palo Verde y La Selva.',
-      suggestedHoldridgeZone: locCtx?.lifeZone || 'Bosque Muy Húmedo Tropical (bmh-T)',
-      microhabitat: locCtx?.microhabitat || 'Estrato superior y dosel de bosques primarios y secundarios.',
-      elevationMeters: locCtx?.elevation ? Number(locCtx.elevation) : 450,
-      hasBioacoustics: true,
-      bioacoustics: {
-        title: 'Coro de Aullido Territorial Matutino',
-        callType: 'Aullido Comunitario de Espaciado',
-        dominantFrequencyRange: '0.4 - 1.2 kHz',
-        durationSeconds: 45,
-        audioPatternDescription: 'Rugido cavernoso gutural profundo con resonancia en hioides',
-      },
-      confidenceScore: 0.98,
-      identificationRationale: 'Primate neotropical con manto dorado lateral y caja hioidea resonadora.',
-    };
-  }
-
-  // Dynamic generic Costa Rican biodiversity record contextualized to location
-  const cleanName = term.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]/g, '').trim() || 'Espécimen Silvestre';
-  const group = taxonGroupHint || 'Amphibia';
-  const elev = locCtx?.elevation ? Number(locCtx.elevation) : 850;
-  return {
-    scientificName: cleanName.includes(' ') ? cleanName : `${cleanName.charAt(0).toUpperCase() + cleanName.slice(1)} costarricensis`,
-    commonName: cleanName,
-    taxonGroup: group,
-    realm: 'Neotropical',
-    taxonomy: {
-      kingdom: group === 'Plantae' ? 'Plantae' : 'Animalia',
-      phylum: group === 'Plantae' ? 'Tracheophyta' : (group === 'Insecta' ? 'Arthropoda' : 'Chordata'),
-      class: group,
-      order: group === 'Amphibia' ? 'Anura' : (group === 'Aves' ? 'Passeriformes' : (group === 'Plantae' ? 'Asparagales' : 'Carnivora')),
-      family: 'Especie nativa documentada en Costa Rica',
-      genus: cleanName.split(' ')[0] || cleanName,
-      species: cleanName.split(' ')[1] || 'costarricensis',
-    },
-    morphometrics: {
-      snoutVentLengthMm: 55.0,
-      totalLengthMm: 75.0,
-      weightGrams: 18.0,
-    },
-    colorationAndAnatomy: `Morfología y caracteres diagnósticos de ${cleanName} adaptados al ecosistema local${locCtx?.locality ? ` en ${locCtx.locality}` : ' en Costa Rica'}. Presenta tegumento y patrones cromáticos con ventajas adaptativas de camuflaje y termorregulación para la elevación de ${elev} m.s.n.m.`,
-    ethologyAndReproduction: `Comportamiento silvestre y patrones estacionales sincronizados con el régimen de lluvias y temperatura${locCtx?.locality ? ` de ${locCtx.locality}` : ' en Costa Rica'}. Actividad de forrajeo y termorregulación adaptada a las condiciones microclimáticas de la zona.`,
-    courtshipAndMating: `Pautas de cortejo y despliegues nupciales en su hábitat natural costarricense. Fecundación y reproducción coordinadas con la fenología del bosque ${locCtx?.lifeZone ? `en ${locCtx.lifeZone}` : 'tropical'}.`,
-    interspecificRelations: `Relaciones tróficas y ecológicas dentro del Área de Conservación correspondiente del SINAC. Interacciones con especies simpátricas en este estrato vegetal y adaptaciones frente a depredadores locales.`,
-    confirmedScientificData: `Registro validado conforme a los inventarios de biodiversidad biológica de Costa Rica (Universidad de Costa Rica - UCR, Organización para Estudios Tropicales - OET, y SINAC/MINAE). Referencias: Janzen, D. H. (1983). Costa Rican Natural History; Colecciones de referencia del Museo de Zoología y Herbario de la UCR.`,
-    suggestedHoldridgeZone: locCtx?.lifeZone || 'Bosque Muy Húmedo Tropical (bmh-T)',
-    microhabitat: locCtx?.microhabitat || 'Estrato vegetal en microcuenca silvestre protegida.',
-    elevationMeters: elev,
-    hasBioacoustics: group === 'Amphibia' || group === 'Aves',
-    bioacoustics: {
-      title: 'Vocalización / Registro acústico',
-      callType: 'Llamado en campo',
-      dominantFrequencyRange: '1.5 - 3.0 kHz',
-      durationSeconds: 15,
-      audioPatternDescription: 'Pauta acústica típica de la especie en vida libre en bosques de Costa Rica',
-    },
-    confidenceScore: 0.90,
-    identificationRationale: `Identificación y datos taxonómicos confirmados para ${cleanName} en Costa Rica.`,
-  };
+  return getCostaRicaBiologicalData(term, taxonGroupHint, {
+    locality: locCtx?.locality,
+    province: locCtx?.province,
+    elevation: locCtx?.elevation ? Number(locCtx.elevation) : undefined,
+    lifeZone: locCtx?.lifeZone,
+    microhabitat: locCtx?.microhabitat,
+  });
 }
 
 /**
