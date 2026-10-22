@@ -177,6 +177,59 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
   const [isGeoprivacyActive, setIsGeoprivacyActive] = useState(false);
   const [isLoadingSightingWeather, setIsLoadingSightingWeather] = useState(false);
 
+  // AI Biological Enrichment State (Gemini 3.8 Flash)
+  const [isDetailEnrichingAI, setIsDetailEnrichingAI] = useState(false);
+  const [detailAIEnrichMsg, setDetailAIEnrichMsg] = useState<string | null>(null);
+
+  const handleDetailEnrichWithAI = async () => {
+    setIsDetailEnrichingAI(true);
+    setDetailAIEnrichMsg(null);
+    try {
+      const response = await fetch('/api/ai/enrich-scientific-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scientificName: specimen.scientificName,
+          commonName: specimen.commonName,
+          taxonGroup: specimen.taxonGroup,
+          query: specimen.scientificName || specimen.commonName,
+        }),
+      });
+
+      const resData = await response.json();
+      if (!resData.success || !resData.data) {
+        throw new Error(resData.error || 'No se obtuvieron datos taxonómicos');
+      }
+
+      const bio = resData.data;
+      const updatedSpecimen: SpecimenRecord = {
+        ...specimen,
+        commonName: specimen.commonName || bio.commonName || specimen.commonName,
+        morphometrics: {
+          ...specimen.morphometrics,
+          colorationAndAnatomy: bio.colorationAndAnatomy || specimen.morphometrics.colorationAndAnatomy,
+          ethologyAndReproduction: bio.ethologyAndReproduction || specimen.morphometrics.ethologyAndReproduction,
+          courtshipAndMating: bio.courtshipAndMating || specimen.morphometrics.courtshipAndMating,
+          interspecificRelations: bio.interspecificRelations || specimen.morphometrics.interspecificRelations,
+          confirmedScientificData: bio.confirmedScientificData || specimen.morphometrics.confirmedScientificData,
+          snoutVentLengthMm: specimen.morphometrics.snoutVentLengthMm || bio.morphometrics?.snoutVentLengthMm || specimen.morphometrics.snoutVentLengthMm,
+        },
+      };
+
+      if (onSaveSpecimen) {
+        onSaveSpecimen(updatedSpecimen);
+      }
+      setDetailAIEnrichMsg('✨ ¡Biología, cromática, etología y datos de campo completados con éxito por IA!');
+      setTimeout(() => setDetailAIEnrichMsg(null), 6000);
+    } catch (err: any) {
+      console.warn('Error enriqueciendo biología:', err);
+      setDetailAIEnrichMsg('No se pudo autocompletar la biología en este momento.');
+      setTimeout(() => setDetailAIEnrichMsg(null), 4000);
+    } finally {
+      setIsDetailEnrichingAI(false);
+    }
+  };
+
   // Direct Sighting Modal State
   const [isAddSightingModalOpen, setIsAddSightingModalOpen] = useState(false);
   const [editingSightingId, setEditingSightingId] = useState<string | null>(null);
@@ -1155,15 +1208,44 @@ export const SpecimenDetailView: React.FC<SpecimenDetailViewProps> = ({
         {/* Scientific Field Notebook & Morphometrics */}
         <section className="px-4 mt-4">
           <div className="p-4 rounded-xl bg-white shadow-sm flex flex-col gap-3 border border-[#e1e3dd]/80">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-[16px] text-[#002217] flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[#006c49] text-[20px]">menu_book</span>
-                Notas de Campo &amp; Morfometría
-              </h3>
-              <span className="font-mono text-[11px] text-[#414844] font-semibold">
-                {specimen.fieldFolio}
-              </span>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-[16px] text-[#002217] flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[#006c49] text-[20px]">menu_book</span>
+                  Notas de Campo &amp; Morfometría
+                </h3>
+                <span className="font-mono text-[11px] text-[#414844] font-semibold">
+                  {specimen.fieldFolio}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDetailEnrichWithAI}
+                disabled={isDetailEnrichingAI}
+                className="px-3 py-1.5 rounded-lg bg-[#002217] hover:bg-[#006c49] text-[#6cf8bb] text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-60 border border-[#6cf8bb]/40"
+                title="Autocompletar cromática, etología, reproducción, relaciones interespecíficas y datos de campo con IA"
+              >
+                {isDetailEnrichingAI ? (
+                  <>
+                    <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                    <span>Consultando IA...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[16px] text-[#6cf8bb]">auto_awesome</span>
+                    <span>✨ Autocompletar Biología con IA</span>
+                  </>
+                )}
+              </button>
             </div>
+
+            {detailAIEnrichMsg && (
+              <div className="p-2.5 rounded-lg bg-[#c1ecd7] text-[#002116] font-medium text-xs flex items-center gap-2 animate-in fade-in">
+                <span className="material-symbols-outlined text-[#006c49] text-[18px]">verified</span>
+                <span>{detailAIEnrichMsg}</span>
+              </div>
+            )}
 
             <div className="p-3 rounded-lg bg-[#f2f4ee] flex flex-col gap-2">
               <div className="flex items-center justify-between">

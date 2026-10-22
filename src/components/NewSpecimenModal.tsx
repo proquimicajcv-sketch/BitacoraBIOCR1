@@ -247,6 +247,118 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
   // Delete confirmation modal state
   const [showDeletePrompt, setShowDeletePrompt] = useState(false);
 
+  // AI Biological Auto-Fill State (Gemini 3.8 Flash + Resilient Costa Rica Biological Engine)
+  const [isEnrichingWithAI, setIsEnrichingWithAI] = useState(false);
+  const [aiEnrichSuccessMsg, setAiEnrichSuccessMsg] = useState<string | null>(null);
+  const [aiEnrichErrorMsg, setAiEnrichErrorMsg] = useState<string | null>(null);
+
+  const handleEnrichWithAI = async (speciesOverride?: string) => {
+    const term = (speciesOverride || scientificName || commonName || '').trim();
+    if (!term) {
+      setAiEnrichErrorMsg(
+        'Por favor ingresa primero el Nombre Científico (ej. Bothriechis schlegelii) o el Nombre Común (ej. Oropel, Danta, Quetzal, Jaguar, Rana de ojos rojos) para autocompletar la ficha.'
+      );
+      setTimeout(() => setAiEnrichErrorMsg(null), 6000);
+      return;
+    }
+
+    setIsEnrichingWithAI(true);
+    setAiEnrichErrorMsg(null);
+    setAiEnrichSuccessMsg(null);
+
+    try {
+      const response = await fetch('/api/ai/enrich-scientific-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scientificName: speciesOverride || scientificName.trim(),
+          commonName: commonName.trim(),
+          taxonGroup,
+          query: term,
+        }),
+      });
+
+      const resData = await response.json();
+      if (!resData.success || !resData.data) {
+        throw new Error(resData.error || 'No se obtuvieron datos taxonómicos');
+      }
+
+      const bio = resData.data;
+
+      // 1. Identificación binomial y nombres
+      if (bio.scientificName) {
+        setScientificName(bio.scientificName);
+      }
+      if (bio.commonName) {
+        setCommonName(bio.commonName);
+      }
+      if (bio.taxonGroup) {
+        setTaxonGroup(bio.taxonGroup as TaxonGroup);
+      }
+      if (bio.taxonomy?.family) {
+        setFamily(bio.taxonomy.family);
+      }
+      if (bio.taxonomy?.genus) {
+        setGenus(bio.taxonomy.genus);
+      }
+
+      // 2. Cromática, Anatomía, Etología, Reproducción, Interespecíficas y Ciencia confirmada
+      if (bio.colorationAndAnatomy) {
+        setColorationNotes(bio.colorationAndAnatomy);
+      }
+      if (bio.ethologyAndReproduction) {
+        setEthologyNotes(bio.ethologyAndReproduction);
+      }
+      if (bio.courtshipAndMating) {
+        setCourtshipNotes(bio.courtshipAndMating);
+      }
+      if (bio.interspecificRelations) {
+        setInterspecificNotes(bio.interspecificRelations);
+      }
+      if (bio.confirmedScientificData) {
+        setConfirmedScienceNotes(bio.confirmedScientificData);
+      }
+
+      // 3. Morfometría y Hábitat
+      if (bio.morphometrics?.snoutVentLengthMm && (!lhcMm || lhcMm === 0)) {
+        setLhcMm(bio.morphometrics.snoutVentLengthMm);
+      }
+      if (bio.suggestedHoldridgeZone) {
+        setLifeZone(bio.suggestedHoldridgeZone);
+      }
+      if (bio.microhabitat) {
+        setMicrohabitat(bio.microhabitat);
+      }
+      if (bio.elevationMeters) {
+        setElevation(bio.elevationMeters);
+      }
+
+      // 4. Bioacústica
+      if (bio.hasBioacoustics && bio.bioacoustics) {
+        setHasBioacoustics(true);
+        if (bio.bioacoustics.title) setAudioTitle(bio.bioacoustics.title);
+        if (bio.bioacoustics.callType) setAudioCallType(bio.bioacoustics.callType);
+        if (bio.bioacoustics.dominantFrequencyRange) setAudioFrequency(bio.bioacoustics.dominantFrequencyRange);
+        if (bio.bioacoustics.audioPatternDescription) setAudioPattern(bio.bioacoustics.audioPatternDescription);
+      }
+
+      const speciesLabel = bio.scientificName || bio.commonName || term;
+      const isOffline = resData.isOfflineFallback;
+      setAiEnrichSuccessMsg(
+        isOffline
+          ? `✅ Datos biológicos completados desde el catálogo biológico de Costa Rica para ${speciesLabel}.`
+          : `✨ ¡Biología completada con éxito por IA (Gemini 3.8 Flash) para ${speciesLabel}! Cromática, anatomía, etología, reproducción, relaciones interespecíficas y datos de campo cargados.`
+      );
+      setTimeout(() => setAiEnrichSuccessMsg(null), 9000);
+    } catch (err: any) {
+      console.warn('Error en autocompletar biología con IA:', err);
+      setAiEnrichErrorMsg('No se pudo autocompletar en este momento. Verifica tu conexión o intenta nuevamente.');
+      setTimeout(() => setAiEnrichErrorMsg(null), 6000);
+    } finally {
+      setIsEnrichingWithAI(false);
+    }
+  };
+
   // Synchronize modal state whenever opened with an existing specimen or new coords
   useEffect(() => {
     if (isOpen) {
@@ -1243,6 +1355,99 @@ export const NewSpecimenModal: React.FC<NewSpecimenModalProps> = ({
                 </p>
               )}
             </div>
+          </div>
+
+          {/* ASISTENTE BIOLÓGICO CON IA (GEMINI 3.8 FLASH & MOTOR DE BIODIVERSIDAD CR) */}
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-[#002217] via-[#053828] to-[#001810] text-white shadow-md border border-[#6cf8bb]/30 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#6cf8bb]/20 border border-[#6cf8bb]/40 flex items-center justify-center shrink-0 text-[#6cf8bb]">
+                  <span className="material-symbols-outlined text-[22px] animate-pulse">auto_awesome</span>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-bold text-[14px] text-white tracking-tight">
+                      Autocompletar Biología con IA
+                    </h4>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#6cf8bb] text-[#002217]">
+                      Gemini 3.8 Flash • 100% Funcional
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#a5d0bc] mt-0.5 leading-snug">
+                    Escribe el nombre común o científico y presiona el botón para llenar automáticamente cromática, anatomía, etología, reproducción, cortejo, relaciones interespecíficas y datos de campo de Costa Rica.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleEnrichWithAI()}
+                disabled={isEnrichingWithAI}
+                className="px-4 py-2.5 rounded-xl bg-[#6cf8bb] hover:bg-[#8affd0] active:scale-95 text-[#002217] font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer disabled:opacity-60 shrink-0"
+                title="Autocompletar todos los campos biológicos de esta especie con IA"
+              >
+                {isEnrichingWithAI ? (
+                  <>
+                    <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                    <span>Analizando biología...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[18px]">temp_preferences_custom</span>
+                    <span>✨ Autocompletar con IA</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Sugerencias rápidas de fauna y flora de Costa Rica */}
+            <div className="flex flex-col gap-1.5 pt-2 border-t border-white/10">
+              <span className="text-[10px] font-mono text-[#a5d0bc] flex items-center gap-1">
+                <span className="material-symbols-outlined text-[13px]">lightbulb</span>
+                <span>Ejemplos de Costa Rica (haz clic para probar):</span>
+              </span>
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                {[
+                  { name: 'Bothriechis schlegelii', label: 'Bocaracá / Oropel' },
+                  { name: 'Tapirus bairdii', label: 'Danta centroamericana' },
+                  { name: 'Pharomachrus mocinno', label: 'Quetzal resplandeciente' },
+                  { name: 'Agalychnis callidryas', label: 'Rana de ojos rojos' },
+                  { name: 'Morpho helenor', label: 'Mariposa Morpho azul' },
+                  { name: 'Guarianthe skinneri', label: 'Guaria morada' },
+                  { name: 'Alouatta palliata', label: 'Mono congo / Aullador' },
+                ].map((item, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setScientificName(item.name);
+                      setCommonName(item.label);
+                      handleEnrichWithAI(item.name);
+                    }}
+                    disabled={isEnrichingWithAI}
+                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 active:bg-[#6cf8bb]/30 text-white text-[11px] font-medium transition-all whitespace-nowrap cursor-pointer border border-white/15 flex items-center gap-1"
+                  >
+                    <span className="italic">{item.name}</span>
+                    <span className="text-[#6cf8bb] font-normal text-[10px]">({item.label})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Mensajes de confirmación o alerta */}
+            {aiEnrichSuccessMsg && (
+              <div className="p-2.5 rounded-xl bg-[#6cf8bb]/20 border border-[#6cf8bb]/50 text-white text-xs flex items-center gap-2 animate-in fade-in">
+                <span className="material-symbols-outlined text-[#6cf8bb] text-[18px]">check_circle</span>
+                <span className="font-medium text-[#d1fae5]">{aiEnrichSuccessMsg}</span>
+              </div>
+            )}
+
+            {aiEnrichErrorMsg && (
+              <div className="p-2.5 rounded-xl bg-red-950/80 border border-red-500/50 text-white text-xs flex items-center gap-2 animate-in fade-in">
+                <span className="material-symbols-outlined text-red-400 text-[18px]">error</span>
+                <span className="font-medium text-red-200">{aiEnrichErrorMsg}</span>
+              </div>
+            )}
           </div>
 
           {/* Temporalidad y Colector del Espécimen (Fecha y Hora de Colecta/Avistamiento) */}
